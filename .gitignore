@@ -22,6 +22,7 @@ hyperframes/index.html
 hyperframes/transcript.json
 hyperframes/assets/
 hyperframes/renders/
+hyperframes/.work/
 
 # deploy: never commit Postiz runtime state
 deploy/postiz-data/

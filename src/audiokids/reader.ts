@@ -1,5 +1,5 @@
 import { readFileSync, existsSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { join } from 'node:path';
 import { config } from '../config.js';
 import { StorySchema, type Story, type StoryAssets } from '../types.js';
 
@@ -42,13 +42,5 @@ export class AudioKidsReader {
       if (existsSync(p)) return p;
     }
     throw new Error(`No cover art found for ${slug}. Tried: ${candidates.join(', ')}`);
-  }
-
-  readNarrationText(slug: string): string {
-    const txtPath = join(this.outputDir, `${slug}.txt`);
-    if (!existsSync(txtPath)) {
-      throw new Error(`Narration text not found: ${txtPath}`);
-    }
-    return readFileSync(txtPath, 'utf-8');
   }
 }

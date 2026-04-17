@@ -1,4 +1,5 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync } from 'node:fs';
+import { appendFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { config } from '../config.js';
@@ -7,7 +8,8 @@ import type { DecisionLogEntry, Platform, PublishResult } from '../types.js';
 /**
  * Lightweight JSONL decision log (inspired by YouTubeCLI).
  * Every publish attempt is recorded: what was posted, why, and the result.
- * Later we can query this to measure outcomes (engagement) and learn patterns.
+ * Appends are async + POSIX-atomic per line, so the orchestrator can record
+ * decisions from concurrent platform publishes without corrupting the file.
  */
 export class DecisionLog {
   private readonly logPath: string;
@@ -18,20 +20,19 @@ export class DecisionLog {
     this.logPath = logPath ?? join(dir, 'decisions.jsonl');
   }
 
-  record(params: {
+  async record(params: {
     action: string;
     storySlug: string;
     platform: Platform;
     reason: string;
     result: PublishResult;
-  }): DecisionLogEntry {
+  }): Promise<DecisionLogEntry> {
     const entry: DecisionLogEntry = {
       id: randomUUID(),
       createdAt: new Date().toISOString(),
       ...params,
     };
-    const line = JSON.stringify(entry) + '\n';
-    writeFileSync(this.logPath, line, { flag: 'a' });
+    await appendFile(this.logPath, JSON.stringify(entry) + '\n');
     return entry;
   }
 

@@ -1,6 +1,6 @@
 import { readFileSync, statSync } from 'node:fs';
 import { basename } from 'node:path';
-import { config } from '../config.js';
+import { config, assertPostizConfigured } from '../config.js';
 import type { Platform } from '../types.js';
 
 // Postiz uses these identifiers in its `integration` field when creating posts.
@@ -31,7 +31,6 @@ export interface CreatePostInput {
   integrationId: string;
   text: string;
   videoPath?: string;
-  imagePath?: string;
   scheduledDate?: string;
   platformSettings?: Record<string, unknown>;
 }
@@ -47,7 +46,7 @@ export class PostizClient {
     private readonly apiUrl: string = config.postiz.apiUrl,
     private readonly apiKey: string = config.postiz.apiKey,
   ) {
-    if (!this.apiKey) throw new Error('POSTIZ_API_KEY is not set');
+    assertPostizConfigured();
   }
 
   private async request<T>(method: string, path: string, body?: unknown, contentType = 'application/json'): Promise<T> {
@@ -61,7 +60,12 @@ export class PostizClient {
       headers['Content-Type'] = contentType;
       payload = JSON.stringify(body);
     }
-    const res = await fetch(`${this.apiUrl}${path}`, { method, headers, body: payload });
+    const res = await fetch(`${this.apiUrl}${path}`, {
+      method,
+      headers,
+      body: payload,
+      signal: AbortSignal.timeout(15000),
+    });
     const text = await res.text();
     if (!res.ok) {
       throw new Error(`Postiz ${method} ${path} failed [${res.status}]: ${text.slice(0, 400)}`);
@@ -99,7 +103,6 @@ export class PostizClient {
   async createPost(input: CreatePostInput): Promise<CreatePostResult> {
     const media: Array<{ id: string; path: string }> = [];
     if (input.videoPath) media.push(await this.uploadMedia(input.videoPath));
-    if (input.imagePath) media.push(await this.uploadMedia(input.imagePath));
 
     const scheduledDate = input.scheduledDate ?? new Date().toISOString();
     const key = POSTIZ_PROVIDER_KEY[input.platform]!;
