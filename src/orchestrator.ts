@@ -4,7 +4,9 @@ import { config } from './config.js';
 import { AudioKidsReader } from './audiokids/reader.js';
 import { SubtitleGenerator, type WordEntry } from './media/subtitles.js';
 import { getPublisher } from './platforms/registry.js';
+import type { PlatformPublisher, PublishContext } from './platforms/base.js';
 import { DecisionLog } from './decisions/log.js';
+import { retry, isTransientError } from './lib/retry.js';
 import type { CaptionStatus, Platform, PublishResult } from './types.js';
 
 export interface PublishOptions {
@@ -68,7 +70,8 @@ export class Orchestrator {
     for (const platform of opts.platforms) {
       console.log(`\n→ ${platform}`);
       const publisher = getPublisher(platform);
-      const result = await publisher.publish({ assets, workDir, words, dryRun: opts.dryRun });
+      const ctx: PublishContext = { assets, workDir, words, dryRun: opts.dryRun };
+      const result = await this.publishWithRetry(publisher, ctx);
       const decorated: PublishResult = {
         ...result,
         captionStatus: result.captionStatus ?? captionStatus,
@@ -85,6 +88,48 @@ export class Orchestrator {
     }
 
     return { slug: opts.storySlug, results };
+  }
+
+  /**
+   * Calls `publisher.publish(ctx)` through the retry helper. Publishers catch their
+   * errors internally and return `{success:false, error}`; we re-throw those into the
+   * retry harness so transient failures (5xx, network errors) get retried. On final
+   * failure we return the last failed PublishResult verbatim so the caller still sees
+   * the original error string.
+   */
+  private async publishWithRetry(publisher: PlatformPublisher, ctx: PublishContext): Promise<PublishResult> {
+    let lastResult: PublishResult | null = null;
+    try {
+      return await retry(async () => {
+        const result = await publisher.publish(ctx);
+        lastResult = result;
+        if (!result.success) {
+          const err = new Error(result.error ?? 'publish failed');
+          (err as Error & { result?: PublishResult }).result = result;
+          throw err;
+        }
+        return result;
+      }, {
+        isRetryable: (err) => {
+          // Unwrap our synthetic error: look at the underlying message.
+          const anyErr = err as { message?: string; code?: string };
+          return isTransientError(anyErr);
+        },
+        onRetry: (err, attempt, delayMs) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn(`  ${publisher.platform} attempt ${attempt} failed (${msg}); retrying in ${delayMs}ms`);
+        },
+      });
+    } catch (err) {
+      if (lastResult) return lastResult;
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        platform: publisher.platform,
+        success: false,
+        error: msg,
+        timestamp: new Date().toISOString(),
+      };
+    }
   }
 
   private async tryTranscribe(audioPath: string, workDir: string, locale: string): Promise<
