@@ -7,6 +7,7 @@ import { getPublisher } from './platforms/registry.js';
 import type { PlatformPublisher, PublishContext } from './platforms/base.js';
 import { DecisionLog } from './decisions/log.js';
 import { retry, isTransientError } from './lib/retry.js';
+import { notifyFailure } from './lib/alerts.js';
 import { wasRecentlyPublished } from './idempotency.js';
 import type { CaptionStatus, Platform, PublishResult } from './types.js';
 
@@ -129,8 +130,10 @@ export class Orchestrator {
    */
   private async publishWithRetry(publisher: PlatformPublisher, ctx: PublishContext): Promise<PublishResult> {
     let lastResult: PublishResult | null = null;
+    let attemptsSeen = 0;
     try {
       return await retry(async () => {
+        attemptsSeen++;
         const result = await publisher.publish(ctx);
         lastResult = result;
         if (!result.success) {
@@ -150,8 +153,14 @@ export class Orchestrator {
         },
       });
     } catch (err) {
-      if (lastResult) return lastResult;
       const msg = err instanceof Error ? err.message : String(err);
+      // Fire-and-forget alert after retries exhausted. Awaited only to clear the
+      // timeout handle; swallows its own errors so orchestrator is never blocked.
+      void notifyFailure(
+        { slug: ctx.assets.slug, platform: publisher.platform, error: msg, attempts: attemptsSeen },
+        config.alerts.webhookUrl || undefined,
+      );
+      if (lastResult) return lastResult;
       return {
         platform: publisher.platform,
         success: false,

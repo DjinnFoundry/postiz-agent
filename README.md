@@ -63,6 +63,7 @@ pnpm install
 
 cp .env.example .env
 # edit POSTIZ_API_URL, POSTIZ_API_KEY, AUDIOKIDS_OUTPUT_DIR
+# (optional) set ALERT_WEBHOOK_URL to get a POST when a platform publish fails
 
 # Optional: install HyperFrames skills for Claude Code / Cursor
 npx skills add heygen-com/hyperframes

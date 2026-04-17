@@ -32,6 +32,9 @@ export const config = {
     r2Bucket: optional('SPOTIFY_RSS_R2_BUCKET'),
     publicFeedUrl: optional('SPOTIFY_RSS_PUBLIC_URL'),
   },
+  alerts: {
+    webhookUrl: optional('ALERT_WEBHOOK_URL'),
+  },
   paths: {
     projectRoot: resolve(__dirname, '..'),
     binDir: resolve(__dirname, '..', 'bin'),
