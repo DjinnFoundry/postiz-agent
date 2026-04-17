@@ -93,6 +93,9 @@ export interface PublishResult {
   captionStatus?: CaptionStatus;
   /** Non-fatal warnings surfaced during this publish (mood fallback, moderation, etc.). */
   warnings?: string[];
+  /** For multi-part publishes (e.g. IG Reels split): one sub-result per part. The
+   *  top-level success is true iff every part succeeded. */
+  parts?: PublishResult[];
 }
 
 export interface DecisionLogEntry {

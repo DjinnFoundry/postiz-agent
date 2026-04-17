@@ -6,7 +6,7 @@
  * Output: writes to <cwd>/index.html
  */
 import { writeFileSync } from 'node:fs';
-import { HEAD_SEC, TAIL_SEC, buildPages, escHtml, emitWordColorTimeline, readStoryFromStdin } from './common.mjs';
+import { HEAD_SEC, TAIL_SEC, buildPages, escHtml, emitWordColorTimeline, readStoryFromStdin, renderPartRibbon } from './common.mjs';
 
 const PALETTE = {
   bg: '#F1E8D8',
@@ -97,6 +97,13 @@ const html = `<!doctype html>
     }
     .w { color: ${PALETTE.muted}; }
 
+    .part-ribbon {
+      position: absolute; top: 96px; right: 96px;
+      font-size: 20px; letter-spacing: 4px; text-transform: uppercase;
+      color: ${PALETTE.ember}; opacity: 0.9;
+      padding: 8px 16px; border: 2px solid ${PALETTE.ember}; border-radius: 999px;
+    }
+
     .brand {
       position: absolute; bottom: 0; left: 0; right: 0;
       padding: 24px 48px;
@@ -117,6 +124,7 @@ const html = `<!doctype html>
       <div class="kicker">un cuento de audiokids</div>
       <div class="title">${escHtml(title)}</div>
       <div class="byline">${escHtml(byline)}</div>
+      ${renderPartRibbon(story)}
     </div>
 
     <audio id="narration" class="clip" data-start="${HEAD_SEC}" data-duration="${audioDuration.toFixed(3)}" data-track-index="9" src="${escHtml(audioSrc)}"></audio>

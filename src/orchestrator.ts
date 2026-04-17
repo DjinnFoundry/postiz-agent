@@ -118,13 +118,25 @@ export class Orchestrator {
         warnings: mergeWarnings(result.warnings, warnings),
       };
       results.push(decorated);
-      this.decisions.record({
-        action: `publish.${platform}`,
-        storySlug: opts.storySlug,
-        platform,
-        reason: opts.reason ?? 'scheduled daily publication',
-        result: decorated,
-      });
+      if (decorated.parts && decorated.parts.length > 0) {
+        for (const part of decorated.parts) {
+          this.decisions.record({
+            action: `publish.${platform}.part${part.partIndex ?? 0}`,
+            storySlug: opts.storySlug,
+            platform,
+            reason: opts.reason ?? 'scheduled daily publication',
+            result: part,
+          });
+        }
+      } else {
+        this.decisions.record({
+          action: `publish.${platform}`,
+          storySlug: opts.storySlug,
+          platform,
+          reason: opts.reason ?? 'scheduled daily publication',
+          result: decorated,
+        });
+      }
     }
 
     return { slug: opts.storySlug, results };
