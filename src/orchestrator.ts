@@ -7,6 +7,7 @@ import { getPublisher } from './platforms/registry.js';
 import type { PlatformPublisher, PublishContext } from './platforms/base.js';
 import { DecisionLog } from './decisions/log.js';
 import { retry, isTransientError } from './lib/retry.js';
+import { wasRecentlyPublished } from './idempotency.js';
 import type { CaptionStatus, Platform, PublishResult } from './types.js';
 
 export interface PublishOptions {
@@ -15,6 +16,7 @@ export interface PublishOptions {
   dryRun?: boolean;
   skipTranscription?: boolean;
   allowNoCaptions?: boolean;
+  force?: boolean;
   reason?: string;
 }
 
@@ -69,6 +71,34 @@ export class Orchestrator {
     const results: PublishResult[] = [];
     for (const platform of opts.platforms) {
       console.log(`\n→ ${platform}`);
+
+      // Idempotency: skip if we already successfully published in the last 24h.
+      if (!opts.force && !opts.dryRun) {
+        const history = this.decisions.list({ storySlug: opts.storySlug, platform });
+        const check = wasRecentlyPublished(history, opts.storySlug, platform);
+        if (check.recent) {
+          console.log(`  skipped: already published in the last 24h (${check.entry?.createdAt})`);
+          const skipped: PublishResult = {
+            platform,
+            success: true,
+            skipped: true,
+            reason: 'already published today',
+            timestamp: new Date().toISOString(),
+            captionStatus,
+            warnings: warnings.length ? [...warnings] : undefined,
+          };
+          results.push(skipped);
+          this.decisions.record({
+            action: `publish.${platform}.skipped`,
+            storySlug: opts.storySlug,
+            platform,
+            reason: opts.reason ?? 'scheduled daily publication',
+            result: skipped,
+          });
+          continue;
+        }
+      }
+
       const publisher = getPublisher(platform);
       const ctx: PublishContext = { assets, workDir, words, dryRun: opts.dryRun };
       const result = await this.publishWithRetry(publisher, ctx);
@@ -111,7 +141,6 @@ export class Orchestrator {
         return result;
       }, {
         isRetryable: (err) => {
-          // Unwrap our synthetic error: look at the underlying message.
           const anyErr = err as { message?: string; code?: string };
           return isTransientError(anyErr);
         },
