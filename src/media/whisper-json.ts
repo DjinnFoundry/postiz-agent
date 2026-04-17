@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 
 export interface WhisperWord {
   word: string;
@@ -25,9 +25,7 @@ export function parseWhisperJson(path: string): WhisperJson {
   return JSON.parse(readFileSync(path, 'utf-8'));
 }
 
-/**
- * Flattens whisper's segment/word structure into one entry per word.
- */
+/** Flattens whisper's segment/word structure into one entry per word. */
 export function flattenWords(json: WhisperJson): WhisperWord[] {
   const words: WhisperWord[] = [];
   for (const seg of json.segments) {
@@ -39,29 +37,4 @@ export function flattenWords(json: WhisperJson): WhisperWord[] {
     }
   }
   return words;
-}
-
-/**
- * Emits a word-level SRT (one block per word). Feeds into @remotion/captions'
- * parseSrt() + createTikTokStyleCaptions() which then can combine N words per page.
- */
-export function writeWordLevelSrt(words: WhisperWord[], outputPath: string): string {
-  const blocks = words.map((w, i) =>
-    `${i + 1}\n${fmt(w.start)} --> ${fmt(w.end)}\n${w.word}\n`,
-  );
-  writeFileSync(outputPath, blocks.join('\n'), 'utf-8');
-  return outputPath;
-}
-
-function fmt(sec: number): string {
-  const ms = Math.max(0, Math.round(sec * 1000));
-  const h = Math.floor(ms / 3_600_000);
-  const m = Math.floor((ms % 3_600_000) / 60_000);
-  const s = Math.floor((ms % 60_000) / 1000);
-  const rem = ms % 1000;
-  return `${p(h, 2)}:${p(m, 2)}:${p(s, 2)},${p(rem, 3)}`;
-}
-
-function p(n: number, w: number): string {
-  return String(n).padStart(w, '0');
 }

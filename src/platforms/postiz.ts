@@ -31,7 +31,6 @@ export interface CreatePostInput {
   integrationId: string;
   text: string;
   videoPath?: string;
-  imagePath?: string;
   scheduledDate?: string;
   platformSettings?: Record<string, unknown>;
 }
@@ -99,7 +98,6 @@ export class PostizClient {
   async createPost(input: CreatePostInput): Promise<CreatePostResult> {
     const media: Array<{ id: string; path: string }> = [];
     if (input.videoPath) media.push(await this.uploadMedia(input.videoPath));
-    if (input.imagePath) media.push(await this.uploadMedia(input.imagePath));
 
     const scheduledDate = input.scheduledDate ?? new Date().toISOString();
     const key = POSTIZ_PROVIDER_KEY[input.platform]!;

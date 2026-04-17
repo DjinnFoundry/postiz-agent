@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { config } from '../config.js';
 import { probeDurationSec } from '../lib/ffprobe.js';
@@ -114,10 +114,3 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-export async function writeFeedToFile(channel: PodcastChannelMeta, outputPath: string): Promise<string> {
-  const builder = new SpotifyRssBuilder(channel);
-  const xml = await builder.build();
-  mkdirSync(join(outputPath, '..'), { recursive: true });
-  writeFileSync(outputPath, xml, 'utf-8');
-  return outputPath;
-}
