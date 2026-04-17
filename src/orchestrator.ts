@@ -40,7 +40,7 @@ export class Orchestrator {
     const workDir = join(config.paths.tmpDir, opts.storySlug);
     mkdirSync(workDir, { recursive: true });
 
-    const words = opts.skipTranscription ? undefined : await this.tryTranscribe(assets.audioMp3Path, workDir, m.meta.locale);
+    const words = opts.skipTranscription ? [] : (await this.tryTranscribe(assets.audioMp3Path, workDir, m.meta.locale)) ?? [];
 
     const results: PublishResult[] = [];
     for (const platform of opts.platforms) {

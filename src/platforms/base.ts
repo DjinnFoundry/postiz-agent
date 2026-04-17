@@ -7,8 +7,12 @@ export type { WordEntry };
 export interface PublishContext {
   assets: StoryAssets;
   workDir: string;
-  /** Word-level transcript, already computed at the orchestrator level */
-  words?: WordEntry[];
+  /**
+   * Word-level transcript, always computed once at the orchestrator level.
+   * If transcription is unavailable (e.g. whisper failed, or --skip-transcription),
+   * the orchestrator must decide whether to abort or surface an empty array here.
+   */
+  words: WordEntry[];
   dryRun?: boolean;
 }
 
@@ -44,6 +48,13 @@ export abstract class VideoPublisher implements PlatformPublisher {
   }
 
   protected async buildVideo(ctx: PublishContext): Promise<string> {
+    if (!ctx.words?.length) {
+      throw new Error(
+        `cannot build a slide video for ${this.platform} without a transcript. ` +
+        `The orchestrator should either transcribe, abort, or pass --skip-transcription ` +
+        `(which skips video generation entirely for slide-based publishers).`,
+      );
+    }
     const videoPath = join(ctx.workDir, `${ctx.assets.slug}-${this.platform}.mp4`);
     await this.slides.build({
       platform: this.platform,
