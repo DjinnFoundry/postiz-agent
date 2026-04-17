@@ -4,7 +4,6 @@ import { existsSync, writeFileSync } from 'node:fs';
 import { Orchestrator } from './orchestrator.js';
 import { SpotifyRssBuilder } from './platforms/spotify-rss.js';
 import { DecisionLog } from './decisions/log.js';
-import { AudioKidsReader } from './audiokids/reader.js';
 import { PostizClient } from './platforms/postiz.js';
 import { config } from './config.js';
 import { run } from './lib/process.js';
@@ -243,14 +242,18 @@ async function runStatusChecks(): Promise<Check[]> {
   });
 
   try {
-    await new AudioKidsReader().readStory.bind(new AudioKidsReader());
-    checks.push({ label: 'AudioKids reader importable', ok: true, required: true });
+    const { accessSync, constants } = await import('node:fs');
+    accessSync(config.audiokids.outputDir, constants.R_OK);
+    checks.push({ label: 'AudioKids output dir readable', ok: true, required: true });
   } catch (err) {
-    checks.push({ label: 'AudioKids reader importable', ok: false, detail: String(err), required: true });
+    checks.push({ label: 'AudioKids output dir readable', ok: false, detail: String(err), required: true });
   }
 
   try {
-    const res = await fetch(`${config.postiz.apiUrl.replace(/\/public\/v1$/, '')}/`, { method: 'GET' });
+    const res = await fetch(`${config.postiz.apiUrl.replace(/\/public\/v1$/, '')}/`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(15000),
+    });
     checks.push({
       label: `Postiz API reachable`,
       ok: true,

@@ -60,7 +60,12 @@ export class PostizClient {
       headers['Content-Type'] = contentType;
       payload = JSON.stringify(body);
     }
-    const res = await fetch(`${this.apiUrl}${path}`, { method, headers, body: payload });
+    const res = await fetch(`${this.apiUrl}${path}`, {
+      method,
+      headers,
+      body: payload,
+      signal: AbortSignal.timeout(15000),
+    });
     const text = await res.text();
     if (!res.ok) {
       throw new Error(`Postiz ${method} ${path} failed [${res.status}]: ${text.slice(0, 400)}`);
