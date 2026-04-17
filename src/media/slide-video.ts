@@ -1,83 +1,68 @@
-import { copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { config } from '../config.js';
 import { run } from '../lib/process.js';
-import { SubtitleGenerator } from './subtitles.js';
-import { parseWhisperJson, flattenWords } from './whisper-json.js';
-import type { Mood, Platform, StoryAssets } from '../types.js';
+import { VARIANTS, type Platform, type StoryAssets, type WordEntry } from '../types.js';
 
 export interface SlideDimensions {
   width: number;
   height: number;
 }
 
-const CANVAS: Record<Platform, SlideDimensions | null> = {
-  x:         { width: 1080, height: 1080 },
-  tiktok:    { width: 1080, height: 1920 },
-  instagram: { width: 1080, height: 1920 },
-  youtube:   { width: 1920, height: 1080 },
-  spotify:   null,
-};
-
-interface BuildInput {
+export interface BuildInput {
   platform: Platform;
   assets: StoryAssets;
   outputPath: string;
-  /** Pre-computed words (skip whisper if provided). */
-  words?: Array<{ text: string; start: number; end: number }>;
+  /** Word-level transcript. Always supplied by the orchestrator; never re-transcribed here. */
+  words: WordEntry[];
 }
 
+const HF_PROJECT = resolve(config.paths.projectRoot, 'hyperframes');
+const HF_WORK_ROOT = join(HF_PROJECT, '.work');
+// Files that must exist in each per-render workspace for `npx hyperframes render` to succeed.
+const STATIC_PROJECT_ENTRIES = ['hyperframes.json', 'meta.json', 'templates'] as const;
+
 /**
- * Generates a slide-based video by driving the HyperFrames project:
- *   1. Transcribe narration MP3 → word-level JSON (or reuse pre-computed)
- *   2. Stage MP3 + transcript into hyperframes/assets & hyperframes/transcript.json
- *   3. Pipe story JSON into templates/{mood}.mjs which writes index.html
- *   4. Run `npx hyperframes render` to produce MP4
- *   5. Move output to the requested path
+ * Generates a slide-based video by driving the HyperFrames project.
+ *
+ * Each `build()` call creates an isolated workspace under `hyperframes/.work/<slug>-<platform>-<pid>/`
+ * so concurrent renders do NOT clobber each other's staged audio, transcript, or index.html.
+ * The workspace is cleaned up on both success and failure.
  */
 export class SlideVideoBuilder {
-  private readonly projectDir = resolve(config.paths.projectRoot, 'hyperframes');
-  private readonly subs = new SubtitleGenerator();
-
   async build(input: BuildInput): Promise<string> {
-    const dims = CANVAS[input.platform];
-    if (!dims) throw new Error(`Platform ${input.platform} has no slide video variant`);
-
-    const words = input.words ?? await this.transcribe(input.assets);
-    const storyPayload = this.buildStoryPayload(input.assets, words, dims);
-
-    this.stageAssets(input.assets, words);
-    await this.runTemplate(input.assets.metadata.mood, storyPayload);
-    const rendered = await this.renderVideo(input.assets.slug, input.platform);
-
-    mkdirSync(dirname(input.outputPath), { recursive: true });
-    copyFileSync(rendered, input.outputPath);
-    return input.outputPath;
-  }
-
-  private async transcribe(assets: StoryAssets) {
-    const tmpDir = join(config.paths.tmpDir, assets.slug);
-    mkdirSync(tmpDir, { recursive: true });
-    const base = basename(assets.audioMp3Path).replace(/\.[^.]+$/, '');
-    const jsonPath = join(tmpDir, `${base}.json`);
-
-    if (!existsSync(jsonPath)) {
-      // `whisper` CLI writes <base>.json beside other formats when output_format=json
-      await run('whisper', [
-        assets.audioMp3Path,
-        '--model', 'base',
-        '--language', assets.metadata.meta.locale.split('-')[0] ?? 'es',
-        '--output_format', 'json',
-        '--output_dir', tmpDir,
-        '--word_timestamps', 'True',
-        '--verbose', 'False',
-      ]);
+    const dims = canvasFor(input.platform);
+    if (!input.words || input.words.length === 0) {
+      throw new Error(`SlideVideoBuilder.build requires a non-empty words[] for ${input.assets.slug}`);
     }
-    const data = parseWhisperJson(jsonPath);
-    return flattenWords(data).map(w => ({ text: w.word, start: w.start, end: w.end }));
+
+    const workspace = this.createWorkspace(input.assets.slug, input.platform);
+    try {
+      this.stageAssets(workspace, input.assets, input.words);
+      await this.runTemplate(workspace, input.assets.metadata.mood, this.buildStoryPayload(input.assets, input.words, dims));
+      const rendered = await this.renderVideo(workspace, input.assets.slug, input.platform);
+      mkdirSync(dirname(input.outputPath), { recursive: true });
+      copyFileSync(rendered, input.outputPath);
+      return input.outputPath;
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
   }
 
-  private buildStoryPayload(assets: StoryAssets, words: BuildInput['words'], dims: SlideDimensions) {
+  private createWorkspace(slug: string, platform: Platform): string {
+    mkdirSync(HF_WORK_ROOT, { recursive: true });
+    const workspace = join(HF_WORK_ROOT, `${slug}-${platform}-${process.pid}-${Date.now()}`);
+    mkdirSync(workspace, { recursive: true });
+    // Copy the static project parts so `npx hyperframes render <workspace>` sees a complete project.
+    for (const entry of STATIC_PROJECT_ENTRIES) {
+      const src = join(HF_PROJECT, entry);
+      if (!existsSync(src)) continue;
+      cpSync(src, join(workspace, entry), { recursive: true });
+    }
+    return workspace;
+  }
+
+  private buildStoryPayload(assets: StoryAssets, words: WordEntry[], dims: SlideDimensions) {
     const m = assets.metadata;
     return {
       title: m.titulo,
@@ -90,47 +75,33 @@ export class SlideVideoBuilder {
     };
   }
 
-  private stageAssets(assets: StoryAssets, words: BuildInput['words']) {
-    const assetsDir = join(this.projectDir, 'assets');
+  private stageAssets(workspace: string, assets: StoryAssets, words: WordEntry[]) {
+    const assetsDir = join(workspace, 'assets');
     mkdirSync(assetsDir, { recursive: true });
     copyFileSync(assets.audioMp3Path, join(assetsDir, 'narration.mp3'));
-    writeFileSync(join(this.projectDir, 'transcript.json'), JSON.stringify(words, null, 2));
+    writeFileSync(join(workspace, 'transcript.json'), JSON.stringify(words, null, 2));
   }
 
-  private async runTemplate(mood: Mood, payload: object): Promise<void> {
-    const templatePath = join(this.projectDir, 'templates', `${mood}.mjs`);
+  private async runTemplate(workspace: string, mood: string, payload: object): Promise<void> {
+    const templatePath = join(workspace, 'templates', `${mood}.mjs`);
     if (!existsSync(templatePath)) {
       throw new Error(`No HyperFrames template for mood=${mood} at ${templatePath}`);
     }
-    // Pipe the payload as JSON on stdin so the template runs deterministically.
-    await runWithStdin('node', [templatePath], JSON.stringify(payload), { cwd: this.projectDir });
-    // Lint before render (catches silent-audio bugs etc.)
-    await run('npx', ['hyperframes', 'lint'], { cwd: this.projectDir });
+    await run('node', [templatePath], { cwd: workspace, stdin: JSON.stringify(payload) });
+    await run('npx', ['hyperframes', 'lint'], { cwd: workspace });
   }
 
-  private async renderVideo(slug: string, platform: Platform): Promise<string> {
-    const renderOut = join(this.projectDir, 'renders', `${slug}-${platform}.mp4`);
-    rmSync(renderOut, { force: true });
+  private async renderVideo(workspace: string, slug: string, platform: Platform): Promise<string> {
+    const renderOut = join(workspace, 'renders', `${slug}-${platform}.mp4`);
     mkdirSync(dirname(renderOut), { recursive: true });
-    await run('npx', ['hyperframes', 'render', '--output', renderOut, '--quiet'], { cwd: this.projectDir });
+    await run('npx', ['hyperframes', 'render', '--output', renderOut, '--quiet'], { cwd: workspace });
     if (!existsSync(renderOut)) throw new Error(`hyperframes render produced no output at ${renderOut}`);
     return renderOut;
   }
 }
 
-function runWithStdin(cmd: string, args: string[], stdin: string, opts: { cwd?: string } = {}): Promise<void> {
-  return new Promise((resolvePromise, rejectPromise) => {
-    import('node:child_process').then(({ spawn }) => {
-      const proc = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'], cwd: opts.cwd });
-      let stderr = '';
-      proc.stderr.on('data', d => { stderr += d.toString(); });
-      proc.on('error', rejectPromise);
-      proc.on('close', code => {
-        if (code === 0) resolvePromise();
-        else rejectPromise(new Error(`${cmd} exited ${code}: ${stderr.slice(-400)}`));
-      });
-      proc.stdin.write(stdin);
-      proc.stdin.end();
-    });
-  });
+function canvasFor(platform: Platform): SlideDimensions {
+  const variant = VARIANTS[platform];
+  if (!variant) throw new Error(`Platform ${platform} has no slide video variant`);
+  return { width: variant.width, height: variant.height };
 }

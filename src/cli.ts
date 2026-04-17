@@ -4,10 +4,10 @@ import { existsSync, writeFileSync } from 'node:fs';
 import { Orchestrator } from './orchestrator.js';
 import { SpotifyRssBuilder } from './platforms/spotify-rss.js';
 import { DecisionLog } from './decisions/log.js';
-import { AudioKidsReader } from './audiokids/reader.js';
 import { PostizClient } from './platforms/postiz.js';
 import { config } from './config.js';
 import { run } from './lib/process.js';
+import { validateSlug } from './lib/slug.js';
 import { PlatformSchema, type Platform } from './types.js';
 
 const program = new Command();
@@ -73,7 +73,7 @@ program.commands[0].action(async (opts) => {
   const platforms = parsePlatforms(opts.platforms);
   const orch = new Orchestrator();
   const report = await orch.publish({
-    storySlug: opts.slug,
+    storySlug: validateSlug(opts.slug),
     platforms,
     dryRun: opts.dryRun,
     skipTranscription: opts.skipTranscription,
@@ -102,7 +102,7 @@ but makes intent explicit in the decision log.
     const platforms = parsePlatforms(opts.platforms);
     const orch = new Orchestrator();
     const report = await orch.publish({
-      storySlug: opts.slug,
+      storySlug: validateSlug(opts.slug),
       platforms,
       dryRun: true,
       skipTranscription: opts.skipTranscription,
@@ -165,7 +165,8 @@ Examples:
 `)
   .action((opts) => {
     const log = new DecisionLog();
-    const entries = log.list({ storySlug: opts.slug, platform: opts.platform });
+    const slug = opts.slug ? validateSlug(opts.slug) : undefined;
+    const entries = log.list({ storySlug: slug, platform: opts.platform });
     if (opts.pretty) console.log(JSON.stringify(entries, null, 2));
     else for (const e of entries) console.log(JSON.stringify(e));
   });
@@ -243,14 +244,18 @@ async function runStatusChecks(): Promise<Check[]> {
   });
 
   try {
-    await new AudioKidsReader().readStory.bind(new AudioKidsReader());
-    checks.push({ label: 'AudioKids reader importable', ok: true, required: true });
+    const { accessSync, constants } = await import('node:fs');
+    accessSync(config.audiokids.outputDir, constants.R_OK);
+    checks.push({ label: 'AudioKids output dir readable', ok: true, required: true });
   } catch (err) {
-    checks.push({ label: 'AudioKids reader importable', ok: false, detail: String(err), required: true });
+    checks.push({ label: 'AudioKids output dir readable', ok: false, detail: String(err), required: true });
   }
 
   try {
-    const res = await fetch(`${config.postiz.apiUrl.replace(/\/public\/v1$/, '')}/`, { method: 'GET' });
+    const res = await fetch(`${config.postiz.apiUrl.replace(/\/public\/v1$/, '')}/`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(15000),
+    });
     checks.push({
       label: `Postiz API reachable`,
       ok: true,

@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { config } from '../config.js';
 import { probeDurationSec } from '../lib/ffprobe.js';
@@ -56,13 +56,19 @@ export class SpotifyRssBuilder {
       const stat = statSync(mp3Path);
       const duration = await probeDurationSec(mp3Path);
 
+      // Prefer story.meta.generatedAt (stable across re-renders) over file mtime
+      // (unstable, would reorder feed + re-notify subscribers on any file touch).
+      const pubSource = story.meta.generatedAt
+        ? new Date(story.meta.generatedAt)
+        : new Date(statSync(join(this.audiokidsDir, jsonFile)).mtimeMs);
+
       episodes.push({
         slug,
         title: story.titulo,
         description: story.contenido.slice(0, 500),
         audioUrl: `${this.publicFeedBase}/audio/${slug}.mp3`,
         durationSec: Math.round(duration),
-        pubDate: new Date(stat.mtimeMs).toUTCString(),
+        pubDate: pubSource.toUTCString(),
         mp3SizeBytes: stat.size,
       });
     }
@@ -114,10 +120,3 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-export async function writeFeedToFile(channel: PodcastChannelMeta, outputPath: string): Promise<string> {
-  const builder = new SpotifyRssBuilder(channel);
-  const xml = await builder.build();
-  mkdirSync(join(outputPath, '..'), { recursive: true });
-  writeFileSync(outputPath, xml, 'utf-8');
-  return outputPath;
-}

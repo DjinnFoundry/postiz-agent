@@ -38,12 +38,21 @@ export const StorySchema = z.object({
     wordCount: z.number(),
     sentenceCount: z.number(),
     estimatedDurationMin: z.number(),
+    /** ISO8601 timestamp of when the story was generated; used as RSS pubDate. */
+    generatedAt: z.string().optional(),
   }),
 });
 export type Story = z.infer<typeof StorySchema>;
 
 export const PlatformSchema = z.enum(['x', 'tiktok', 'instagram', 'youtube', 'spotify']);
 export type Platform = z.infer<typeof PlatformSchema>;
+
+/** Word-level transcript entry. Shared across subtitles, slide video, and publishers. */
+export interface WordEntry {
+  text: string;
+  start: number;
+  end: number;
+}
 
 export type PresetName = 'x' | 'tiktok' | 'reel' | 'youtube';
 
@@ -56,11 +65,17 @@ export interface VariantSpec {
   clipSelectionMs?: { start: number; duration: number } | 'full';
 }
 
+/**
+ * Per-platform canvas + duration limits that match what each platform actually accepts.
+ * X=4h (Premium), TikTok=10min, Instagram Reels=3min, YouTube=effectively unlimited.
+ * Splitting long cuentos into multi-part posts (IG) lives in the publisher layer,
+ * not here: these values describe the platform ceiling, not our preferred clip length.
+ */
 export const VARIANTS: Record<Platform, VariantSpec | null> = {
-  x:        { preset: 'x',       aspect: '1:1',  width: 1080, height: 1080, maxDurationSec: 120, clipSelectionMs: 'full' },
-  tiktok:   { preset: 'tiktok',  aspect: '9:16', width: 1080, height: 1920, maxDurationSec: 60  },
-  instagram:{ preset: 'reel',    aspect: '9:16', width: 1080, height: 1920, maxDurationSec: 90  },
-  youtube:  { preset: 'youtube', aspect: '16:9', width: 1920, height: 1080, maxDurationSec: 3600, clipSelectionMs: 'full' },
+  x:        { preset: 'x',       aspect: '1:1',  width: 1080, height: 1080, maxDurationSec: 14400,                 clipSelectionMs: 'full' },
+  tiktok:   { preset: 'tiktok',  aspect: '9:16', width: 1080, height: 1920, maxDurationSec: 600,                   clipSelectionMs: 'full' },
+  instagram:{ preset: 'reel',    aspect: '9:16', width: 1080, height: 1920, maxDurationSec: 180,                   clipSelectionMs: 'full' },
+  youtube:  { preset: 'youtube', aspect: '16:9', width: 1920, height: 1080, maxDurationSec: Number.MAX_SAFE_INTEGER, clipSelectionMs: 'full' },
   spotify:  null,
 };
 
