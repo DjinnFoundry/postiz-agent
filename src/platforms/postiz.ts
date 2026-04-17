@@ -1,6 +1,6 @@
 import { readFileSync, statSync } from 'node:fs';
 import { basename } from 'node:path';
-import { config } from '../config.js';
+import { config, assertPostizConfigured } from '../config.js';
 import type { Platform } from '../types.js';
 
 // Postiz uses these identifiers in its `integration` field when creating posts.
@@ -47,7 +47,7 @@ export class PostizClient {
     private readonly apiUrl: string = config.postiz.apiUrl,
     private readonly apiKey: string = config.postiz.apiKey,
   ) {
-    if (!this.apiKey) throw new Error('POSTIZ_API_KEY is not set');
+    assertPostizConfigured();
   }
 
   private async request<T>(method: string, path: string, body?: unknown, contentType = 'application/json'): Promise<T> {
