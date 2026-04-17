@@ -55,6 +55,7 @@ program
   )
   .option('--dry-run', 'render videos locally but do not upload', false)
   .option('--skip-transcription', 'skip whisper word-level transcription (videos will have no captions)', false)
+  .option('--allow-no-captions', 'continue (with empty captions) even if whisper crashes; default is to abort', false)
   .option('--reason <text>', 'reason to record in the decision log', 'scheduled daily publication')
   .option('--json', 'emit only the JSON report on stdout (for agent parsing)', false)
   .addHelpText('after', `
@@ -64,7 +65,12 @@ Platforms:
 
 Exit codes:
   0 → every selected platform succeeded
-  1 → at least one platform failed (check the printed report or 'decisions')
+  1 → at least one platform failed, or whisper crashed without --allow-no-captions
+
+By default, if whisper transcription crashes we abort BEFORE rendering to avoid
+publishing videos with no captions. Use --skip-transcription to deliberately opt
+out of captions (sets captionStatus=skipped), or --allow-no-captions to survive a
+whisper failure (sets captionStatus=failed and records a warning).
 
 The decision log at data/decisions.jsonl records every attempt with reason+result.
 `);
@@ -77,10 +83,12 @@ program.commands[0].action(async (opts) => {
     platforms,
     dryRun: opts.dryRun,
     skipTranscription: opts.skipTranscription,
+    allowNoCaptions: opts.allowNoCaptions,
     reason: opts.reason,
   });
   if (opts.json) process.stdout.write(JSON.stringify(report) + '\n');
   else console.log('\n' + JSON.stringify(report, null, 2));
+  if (report.fatalCaptionFailure) process.exit(1);
   const failed = report.results.filter(r => !r.success);
   process.exit(failed.length > 0 ? 1 : 0);
 });
@@ -92,6 +100,7 @@ program
   .requiredOption('-s, --slug <slug>', 'AudioKids story slug')
   .option('-p, --platforms <list>', 'comma-separated platforms', 'tiktok,instagram,youtube,x')
   .option('--skip-transcription', 'skip whisper (no captions)', false)
+  .option('--allow-no-captions', 'continue (with empty captions) even if whisper crashes; default is to abort', false)
   .option('--json', 'emit only the JSON report on stdout', false)
   .addHelpText('after', `
 Produces tmp/<slug>/<slug>-<platform>.mp4 files. Useful for previewing before
@@ -106,10 +115,12 @@ but makes intent explicit in the decision log.
       platforms,
       dryRun: true,
       skipTranscription: opts.skipTranscription,
+      allowNoCaptions: opts.allowNoCaptions,
       reason: 'preview render (no upload)',
     });
     if (opts.json) process.stdout.write(JSON.stringify(report) + '\n');
     else console.log('\n' + JSON.stringify(report, null, 2));
+    if (report.fatalCaptionFailure) process.exit(1);
     process.exit(report.results.every(r => r.success) ? 0 : 1);
   });
 
