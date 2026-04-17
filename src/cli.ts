@@ -58,6 +58,7 @@ program
   .option('--skip-transcription', 'skip whisper word-level transcription (videos will have no captions)', false)
   .option('--allow-no-captions', 'continue (with empty captions) even if whisper crashes; default is to abort', false)
   .option('--force', 'bypass the 24-hour idempotency guard (republish even if already published today)', false)
+  .option('--no-moderation', 'skip the Spanish caption blocklist (debugging only; not recommended)')
   .option('--reason <text>', 'reason to record in the decision log', 'scheduled daily publication')
   .option('--json', 'emit only the JSON report on stdout (for agent parsing)', false)
   .addHelpText('after', `
@@ -87,6 +88,7 @@ program.commands[0].action(async (opts) => {
     skipTranscription: opts.skipTranscription,
     allowNoCaptions: opts.allowNoCaptions,
     force: opts.force,
+    disableModeration: opts.moderation === false,
     reason: opts.reason,
   });
   if (opts.json) process.stdout.write(JSON.stringify(report) + '\n');

@@ -9,6 +9,7 @@ import { DecisionLog } from './decisions/log.js';
 import { retry, isTransientError } from './lib/retry.js';
 import { notifyFailure } from './lib/alerts.js';
 import { wasRecentlyPublished } from './idempotency.js';
+import { moderateWords } from './media/caption-moderation.js';
 import type { CaptionStatus, Platform, PublishResult } from './types.js';
 
 export interface PublishOptions {
@@ -18,6 +19,7 @@ export interface PublishOptions {
   skipTranscription?: boolean;
   allowNoCaptions?: boolean;
   force?: boolean;
+  disableModeration?: boolean;
   reason?: string;
 }
 
@@ -59,6 +61,13 @@ export class Orchestrator {
       if (t.ok) {
         words = t.words;
         captionStatus = 'ok';
+        if (!opts.disableModeration) {
+          const mod = moderateWords(words);
+          words = mod.words;
+          if (mod.replacements > 0) {
+            warnings.push(`caption moderation: replaced ${mod.replacements} token(s) from the Spanish blocklist`);
+          }
+        }
       } else {
         captionStatus = 'failed';
         warnings.push(`transcription failed: ${t.error}`);
