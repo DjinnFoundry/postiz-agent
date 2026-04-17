@@ -71,6 +71,18 @@ export function emitWordColorTimeline(pages, { activeColor, pastColor, headSec =
   return lines.join('\n');
 }
 
+/**
+ * Return a small HTML ribbon string like `PARTE 1 / 3` when the payload is a
+ * multi-part publish. Returns an empty string for single-part payloads so
+ * callers can inline it unconditionally.
+ */
+export function renderPartRibbon(payload) {
+  if (!payload?.partIndex || !payload?.partTotal || payload.partTotal <= 1) return '';
+  const idx = Number(payload.partIndex);
+  const total = Number(payload.partTotal);
+  return `<div class="part-ribbon">PARTE ${idx} / ${total}</div>`;
+}
+
 /** Read story payload from stdin as a single JSON blob. */
 export async function readStoryFromStdin() {
   const chunks = [];
