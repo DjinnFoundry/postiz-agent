@@ -107,7 +107,7 @@ Every command accepts `--help` with examples. Commands that emit JSON also accep
 
 ## Adding a new mood template
 
-AudioKids stories have a `mood` field: `aventura`, `calma`, `comedia`, `misterio`, `emocionante`, `fantasia`, `naturaleza`. Currently only `fantasia` has a template; the others fall through to it as a fallback.
+AudioKids stories have a `mood` field: `aventura`, `calma`, `comedia`, `misterio`, `emocionante`, `fantasia`, `naturaleza`. Currently only `fantasia` has a template; the others fall through to it as a fallback. When a fallback fires the orchestrator logs a warning (`⚠ No template for mood=<x>, falling back to fantasia`) AND attaches it to the `warnings[]` array of that publish result so it shows up in the decision log. You can query how often a given mood hit the fallback with `decisions --slug <slug> | jq .result.warnings`.
 
 To add a new mood:
 
