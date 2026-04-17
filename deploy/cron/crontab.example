@@ -1,0 +1,13 @@
+# postiz-agent dispatch — autonomous daily publishing (Linux/macOS crontab)
+#
+# Runs once a day at 08:00 local time. dispatch exits 0 with "nothing pending"
+# when there is no story to publish, so it is safe to run more often (e.g. hourly
+# or every 30 min) if you want the agent to pick up fresh AudioKids output quickly.
+#
+# Install with:
+#   crontab -e
+#   (paste the line below, adjust the path to where you cloned postiz-agent)
+#
+# Logs land in data/cron.log for `postiz-agent decisions` to cross-reference.
+
+0 8 * * * cd /path/to/postiz-agent && /usr/local/bin/pnpm dev dispatch --platforms x,tiktok,instagram,youtube --json >> data/cron.log 2>&1
