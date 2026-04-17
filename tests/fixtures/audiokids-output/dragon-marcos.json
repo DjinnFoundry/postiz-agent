@@ -1,0 +1,26 @@
+{
+  "titulo": "El dragón curioso",
+  "contenido": "Marcos caminaba por el bosque cuando escuchó un ruido extraño. Detrás de un árbol grande, encontró a un pequeño dragón que lloraba. ¿Por qué lloras?, preguntó Marcos. El dragón levantó la cabeza y dijo: No puedo escupir fuego como los demás dragones. Marcos se sentó a su lado y pensó por un momento. Entonces le dijo: Cierra los ojos, respira hondo, y piensa en algo que te haga feliz. El pequeño dragón cerró los ojos. Pensó en volar sobre las nubes. Pensó en su mamá. Pensó en los amigos que podía tener. Y cuando abrió la boca, salió una llamarada dorada y brillante. ¡Lo hice!, gritó el dragón emocionado. Marcos sonrió. A veces, le dijo, solo necesitas creer en ti mismo.",
+  "vocabularioNuevo": ["escupir", "llamarada", "dorada"],
+  "mood": "fantasia",
+  "beats": [
+    { "t_ms": 0, "type": "intro", "leitmotif": "reverie", "ambience": "forest", "intensity": "low", "sceneTags": ["dawn", "forest"] },
+    { "t_ms": 15000, "type": "character", "leitmotif": "dragon-cute", "intensity": "mid", "sceneTags": ["dragon"] },
+    { "t_ms": 35000, "type": "tension", "intensity": "mid", "sceneTags": ["dialogue"] },
+    { "t_ms": 55000, "type": "reveal", "leitmotif": "magic-celesta", "intensity": "high", "sceneTags": ["magic"] },
+    { "t_ms": 80000, "type": "resolution", "leitmotif": "reverie", "intensity": "low" }
+  ],
+  "meta": {
+    "slug": "dragon-marcos",
+    "age": 6,
+    "mood": "fantasia",
+    "locale": "es-ES",
+    "name": "Marcos",
+    "nivel": 2,
+    "model": "glm-5",
+    "wordCount": 145,
+    "sentenceCount": 16,
+    "avgSentenceLength": 9,
+    "estimatedDurationMin": 1.0
+  }
+}
