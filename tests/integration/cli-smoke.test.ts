@@ -13,7 +13,11 @@ const ROOT = resolve(__dirname, '..', '..');
  */
 
 function runCli(args: string[], opts: { timeout?: number } = {}) {
-  const result = spawnSync('pnpm', ['dev', ...args], {
+  // Invoke tsx directly so pnpm's `> postiz-agent@0.1.0 dev` preamble does not
+  // contaminate JSON output. `pnpm exec tsx` resolves tsx from local node_modules
+  // but still prints its own header; `./node_modules/.bin/tsx` avoids both.
+  const tsx = resolve(ROOT, 'node_modules', '.bin', 'tsx');
+  const result = spawnSync(tsx, ['src/cli.ts', ...args], {
     cwd: ROOT,
     encoding: 'utf-8',
     timeout: opts.timeout ?? 30_000,
