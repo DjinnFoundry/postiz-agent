@@ -45,6 +45,13 @@ export type Story = z.infer<typeof StorySchema>;
 export const PlatformSchema = z.enum(['x', 'tiktok', 'instagram', 'youtube', 'spotify']);
 export type Platform = z.infer<typeof PlatformSchema>;
 
+/** Word-level transcript entry. Shared across subtitles, slide video, and publishers. */
+export interface WordEntry {
+  text: string;
+  start: number;
+  end: number;
+}
+
 export type PresetName = 'x' | 'tiktok' | 'reel' | 'youtube';
 
 export interface VariantSpec {

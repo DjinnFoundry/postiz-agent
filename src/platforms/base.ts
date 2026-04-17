@@ -1,12 +1,8 @@
 import { join } from 'node:path';
 import { SlideVideoBuilder } from '../media/slide-video.js';
-import type { Platform, PublishResult, StoryAssets } from '../types.js';
+import type { Platform, PublishResult, StoryAssets, WordEntry } from '../types.js';
 
-export interface WordEntry {
-  text: string;
-  start: number;
-  end: number;
-}
+export type { WordEntry };
 
 export interface PublishContext {
   assets: StoryAssets;
