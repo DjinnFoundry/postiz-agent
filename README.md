@@ -1,287 +1,193 @@
-# PostizAgent
+# postiz-agent
 
-**Autonomous daily-publishing agent for [AudioKids](../audiokids) audio stories.**
+> Autonomous daily publisher for [AudioKids](https://github.com/DjinnFoundry/audiokids) audio stories.
+> Turns one MP3 cuento into platform-ready posts for X, TikTok, Instagram, YouTube, and Spotify — with book-page slide videos, word-level karaoke captions, and a decision log an LLM can read back later.
 
-Turns one MP3 cuento into five platform-ready posts (X, TikTok, Instagram Reels, YouTube, Spotify) and lets an LLM agent run the whole thing end-to-end, unattended.
+**Agents: read [`SKILL.md`](./SKILL.md) first.** It explains when to use each command, what the flags mean, and what NOT to do.
 
 ---
 
-## Why this exists (and not just Postiz)
+## The gap it fills
 
-[Postiz](https://github.com/gitroomhq/postiz-app) is a great social scheduler: 27+ platforms, OAuth handled, posts get published. But Postiz is **content-agnostic**. It assumes you already have a finished post ready to upload.
-
-AudioKids produces MP3 audio files. None of the platforms we care about accept raw audio:
-
-| Platform | Accepts MP3? | What they want |
-|----------|-------------|----------------|
-| X | No | Video (MP4, 4h on Premium) |
-| TikTok | No | Vertical video (9:16, up to 10min) |
-| Instagram Reels | No | Vertical video (9:16, up to 3min — multi-part for longer) |
-| YouTube | No | Video (16:9 preferred, no duration limit) |
-| Spotify | Yes (but) | Submitted via RSS, no direct API |
-
-So between AudioKids and Postiz there is a **gap** that Postiz alone won't fill:
+[Postiz](https://github.com/gitroomhq/postiz-app) is a great social scheduler but it's content-agnostic — you hand it a finished post and it publishes. AudioKids produces MP3 files. No social platform accepts raw audio. This project is the layer that turns one into the other.
 
 ```
-AudioKids (MP3 + text + beats)            Postiz (posts whatever you give it)
-         │                                        ▲
-         └── ?????????????????????????????────────┘
-                       gap
+AudioKids (MP3 + metadata)          Postiz (X/TikTok/IG adapters)
+        │                                   ▲
+        └─── postiz-agent ──────────────────┘
+              │
+              ├─ whisper word-level transcription
+              ├─ HyperFrames slide video per aspect ratio
+              ├─ YouTubeCLI delegation (for YouTube)
+              └─ RSS feed (for Spotify/Apple)
 ```
 
-PostizAgent fills that gap. It does the domain-specific work Postiz can't know about:
+## What gets published
 
-1. **Editorial slide video** — MP3 + whisper word-timestamps → MP4 with book-page slides, Fraunces serif, per-word karaoke progression ([HyperFrames](https://hyperframes.heygen.com) + GSAP)
-2. **Mood-aware templates** — each AudioKids mood (`fantasia`, `aventura`, `comedia`, `misterio`...) maps to a distinct visual identity, auto-selected from story metadata
-3. **Multi-aspect rendering** — same story, one command, three canvases (1:1 for X, 9:16 for TikTok/IG, 16:9 for YouTube)
-4. **Platform routing** — YouTube goes via [YouTubeCLI](../youtubecli) (analytics, decision logging, 42 MCP tools), not Postiz. Spotify goes via RSS, not Postiz at all.
-5. **Agent-friendly interface** — single CLI command, deterministic JSON output, exit codes, decision log
-6. **Reusable transcription** — whisper runs once per story, all three video variants share the same word-level timestamps
+| Platform | Format | Render spec |
+|---|---|---|
+| **X** | Video | 1:1 · 1080×1080 · up to 4h (Premium) |
+| **TikTok** | Video | 9:16 · 1080×1920 · up to 10min |
+| **Instagram Reels** | Video | 9:16 · 1080×1920 · up to 3min (multi-part for longer cuentos) |
+| **YouTube** | Video | 16:9 · 1920×1080 · no limit |
+| **Spotify / Apple / Amazon** | Audio (RSS) | MP3 feed polled hourly |
 
----
+Each video is a slide-based composition: book-page pacing (15–25 words per slide), current-word highlight, narrator's voice as the audio track. The visual identity is driven by the story's `mood` field (`fantasia`, `aventura`, `calma`, `comedia`, `misterio`, `emocionante`, `naturaleza`) — one HTML template per mood. The first one shipped is `fantasia`.
 
-## Capability matrix: Postiz alone vs PostizAgent
+## Example
 
-| Capability | Postiz (vanilla) | PostizAgent |
-|------------|:---------------:|:-----------:|
-| OAuth to X/TikTok/IG/YT | ✓ | ✓ (delegates to Postiz) |
-| Schedule posts | ✓ | ✓ (delegates to Postiz) |
-| Upload video to a platform | ✓ | ✓ (delegates to Postiz) |
-| Convert audio → video | ✗ | ✓ (HyperFrames) |
-| Per-platform aspect ratios (1:1, 9:16, 16:9) | partial | ✓ (full pipeline) |
-| Mood-themed visual templates | ✗ | ✓ (7 moods, one per identity) |
-| Word-level karaoke captions synced to narration | ✗ | ✓ (Whisper + GSAP) |
-| Spotify / Apple Podcasts | ✗ | ✓ (RSS feed) |
-| YouTube with analytics + decision log | ✗ | ✓ (via YouTubeCLI) |
-| Agent-first CLI (structured JSON, exit codes) | partial | ✓ |
-| Decision log (action + reason + outcome) | ✗ | ✓ |
-| AudioKids-aware (reads mood, vocab, beats) | ✗ | ✓ |
-| One command publishes to all platforms | ✗ (one UI action per platform) | ✓ |
+A one-minute story becomes four ready-to-upload MP4s with a single command:
 
-In short: **Postiz is a hand. PostizAgent is the brain that moves the hand.**
+```
+$ postiz-agent render --slug dragon-marcos --platforms x,tiktok,instagram,youtube
 
----
+story: "El dragón curioso" (145 words, 1min)
+transcribing audio...
+  118 words → tmp/dragon-marcos/dragon-marcos.json
+→ x          dragon-marcos-x.mp4          1080×1080 · 40s · 2.3MB
+→ tiktok     dragon-marcos-tiktok.mp4     1080×1920 · 40s · 2.6MB
+→ instagram  dragon-marcos-instagram.mp4  1080×1920 · 40s · 2.6MB
+→ youtube    dragon-marcos-youtube.mp4    1920×1080 · 40s · 2.6MB
+```
 
-## What an agent can do with it
+Swap `render` for `publish` and the same videos get uploaded through Postiz and YouTubeCLI.
 
-The whole system reduces daily publishing to a single invocation:
+## Install
+
+Prerequisites: Node 20+, ffmpeg, whisper (`pip install openai-whisper`), Docker (for the bundled self-hosted Postiz).
 
 ```bash
-postiz-agent publish --slug dragon-marcos --platforms x,tiktok,instagram,youtube
+git clone https://github.com/DjinnFoundry/postiz-agent.git
+cd postiz-agent
+pnpm install
+
+cp .env.example .env
+# edit POSTIZ_API_URL, POSTIZ_API_KEY, AUDIOKIDS_OUTPUT_DIR
+
+# Optional: install HyperFrames skills for Claude Code / Cursor
+npx skills add heygen-com/hyperframes
 ```
 
-Output is structured JSON:
+Then deploy Postiz self-hosted and connect each platform's OAuth:
 
-```json
-{
-  "slug": "dragon-marcos",
-  "results": [
-    { "platform": "x", "success": true, "postId": "...", "url": "..." },
-    { "platform": "tiktok", "success": true, "postId": "...", "url": "..." },
-    { "platform": "instagram", "success": true, "postId": "...", "url": "..." },
-    { "platform": "youtube", "success": true, "postId": "abc123", "url": "https://youtu.be/abc123" }
-  ]
-}
+```bash
+cd deploy
+cp .env.example .env
+# add X_API_KEY, X_API_SECRET, TIKTOK_CLIENT_KEY, INSTAGRAM_APP_ID, ...
+docker compose up -d
+# open http://localhost:5000 and connect X, TikTok, Instagram
+# copy the Postiz public API key back to the project's root .env
 ```
 
-Exit code `0` if everything succeeded, `1` if anything failed. Every attempt is appended to `data/decisions.jsonl` with the reason and outcome.
+Verify:
 
----
+```
+$ postiz-agent status
+✓ ffmpeg installed
+✓ ffprobe installed
+✓ whisper installed
+✓ npx installed
+✓ AudioKids output dir   /path/to/audiokids/output
+✓ Postiz API reachable   http://localhost:5000/public/v1
+✓ POSTIZ_API_KEY set     present
+✓ YouTubeCLI project path /path/to/youtubecli
+```
+
+## Commands
+
+Full reference is in the CLI itself (`postiz-agent <cmd> --help`). Short version:
+
+| Command | What it does |
+|---|---|
+| `status` | Env health check — run this first |
+| `integrations` | List connected Postiz accounts |
+| `render --slug <s> --platforms <list>` | Build MP4s, no upload |
+| `publish --slug <s> --platforms <list>` | Render + upload to each platform |
+| `rss --output <path>` | Rebuild the Spotify/Apple RSS feed |
+| `decisions [--slug s] [--platform p]` | Query the JSONL publish history |
+
+Every command supports `--help`. `publish`, `render`, `status`, `integrations`, and `decisions` support `--json` for agent-readable output.
 
 ## Architecture
 
 ```
-AudioKids output dir
-(slug.mp3, slug.json, slug-cover.png)
-            │
-            ▼
-    ┌─────────────────┐
-    │   Orchestrator  │  reads story, runs whisper once,
-    │                 │  iterates over platforms
-    └────────┬────────┘
-             │ words[] (word-level transcript)
-             ▼
-    ┌─────────────────────────────┐
-    │   PlatformPublisher         │
-    │     └─ SlideVideoBuilder    │  HTML template (mood) + audio + words
-    └─┬──────┬──────┬──────┬──────┘
-      │      │      │      │
-      ▼      ▼      ▼      ▼
-      X    TikTok  IG    YouTube         Spotify
-      │      │      │      │                │
-      └──────┴──────┘      │                │
-            │              │                │
-            ▼              ▼                ▼
-    ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-    │  Postiz API  │  │  YouTubeCLI  │  │  RSS feed    │
-    │ (self-host)  │  │ (Elixir+MCP) │  │ (R2 public)  │
-    └──────────────┘  └──────────────┘  └──────────────┘
-```
-
-### File layout
-
-```
 src/
-├── cli.ts                    # commander entry (publish, rss, decisions)
-├── orchestrator.ts           # loop: story → transcript → publishers → decision log
-├── config.ts, types.ts       # env + zod schemas
+├── cli.ts                   # commander entrypoint; 6 subcommands
+├── orchestrator.ts          # loop: story → transcript → publishers → decision log
+├── config.ts · types.ts
 │
-├── lib/
-│   ├── process.ts            # run(cmd, args) promise-wrapped spawn
-│   └── ffprobe.ts            # duration / dimension probing
-│
-├── audiokids/reader.ts       # reads story JSON/MP3/cover from AudioKids output
-│
+├── audiokids/reader.ts      # read the story assets from AudioKids output
 ├── media/
-│   ├── subtitles.ts          # whisper CLI → word-level JSON (cached)
-│   ├── whisper-json.ts       # parser + flattener
-│   └── slide-video.ts        # stages assets & drives HyperFrames render
+│   ├── subtitles.ts         # whisper CLI → word-level JSON (disk-cached)
+│   ├── whisper-json.ts      # parser
+│   └── slide-video.ts       # stages assets, drives `npx hyperframes render`
 │
 ├── platforms/
-│   ├── base.ts               # PlatformPublisher + VideoPublisher
-│   ├── registry.ts           # platform → publisher
-│   ├── postiz.ts             # Postiz public API client (X, TikTok, IG)
-│   ├── youtube.ts            # shells out to YouTubeCLI
-│   ├── x-publisher.ts        # ─┐
-│   ├── tiktok-publisher.ts   #  ├─ each implements upload()
-│   ├── instagram-publisher.ts#  │
-│   ├── youtube-publisher.ts  # ─┤
-│   ├── spotify-publisher.ts  # ─┘ no-op (RSS handles it)
-│   └── spotify-rss.ts        # builds iTunes-compatible feed
+│   ├── base.ts              # PlatformPublisher + VideoPublisher strategy base
+│   ├── registry.ts          # platform → publisher
+│   ├── postiz.ts            # Postiz public API client (upload + create post)
+│   ├── youtube.ts           # shells out to YouTubeCLI
+│   ├── {x,tiktok,instagram,youtube,spotify}-publisher.ts
+│   └── spotify-rss.ts       # builds iTunes-format podcast feed
 │
-└── decisions/log.ts          # JSONL decision log
+├── decisions/log.ts         # JSONL append-only decision log
+└── lib/{process,ffprobe}.ts
 
-hyperframes/                  # HyperFrames project (Apache-2.0, HeyGen)
-├── index.html                # generated per render
-├── transcript.json           # generated per render
-├── assets/narration.mp3      # staged per render
-├── hyperframes.json          # project config
+hyperframes/                 # HyperFrames project (HTML → MP4, HeyGen/Apache-2.0)
+├── hyperframes.json · CLAUDE.md · AGENTS.md
 └── templates/
-    ├── common.mjs            # shared helpers (palette, page grouping)
-    └── fantasia.mjs          # mood-specific generator (more to come)
+    ├── common.mjs           # buildPages, palette, HTML base
+    └── fantasia.mjs         # mood template (more coming)
 
 deploy/
-├── docker-compose.yml        # Postiz self-hosted
-└── README.md                 # setup instructions
+├── docker-compose.yml       # self-hosted Postiz + Postgres + Redis
+└── README.md                # OAuth setup walkthrough
 ```
 
 ### Why this shape
 
-**HyperFrames over Remotion.** We originally built this on Remotion (React-based video programming). Migrated to HyperFrames because:
-- Templates are plain HTML + CSS + GSAP — agents can generate new moods without knowing React
-- 50+ pre-built blocks (shader transitions, social overlays) available via `npx hyperframes add`
-- 40% smaller output at equivalent quality
-- Installable as a Claude Code skill (`npx skills add heygen-com/hyperframes`), so new agents discover it automatically
-
-**Strategy pattern per platform.** Each platform is a `VideoPublisher` subclass that implements `upload(videoPath, ctx)`. The base class handles the common flow (video build → dry-run short-circuit → error capture). Adding a new platform is: new file, one method, one line in the registry.
-
-**Transcription runs once.** Whisper processes the MP3 and caches the JSON in `tmp/<slug>/`. All three video variants (X 1:1, TikTok/IG 9:16, YouTube 16:9) consume the same word-level timestamps.
-
-**YouTube is different.** Postiz can upload to YouTube, but it has none of the capabilities YouTubeCLI already has: 42 MCP tools, decision log with result measurement, competitive research, analytics. Delegating to YouTubeCLI is a one-line shell-out that gives us all of that for free.
-
-**Spotify is different too.** There is no Spotify publishing API for independent podcasters. The only path is RSS. We build a feed from AudioKids output and submit it once at `podcasters.spotify.com`.
-
----
-
-## The pieces Postiz doesn't know anything about
-
-These are genuinely outside Postiz's scope. Any Postiz user who wants them has to build them themselves:
-
-1. **`hyperframes/templates/fantasia.mjs`** — 100 lines of deterministic HTML generation. Takes a story JSON (title, byline, words[], aspect ratio) on stdin, emits `index.html` with:
-   - Parchment cream background + soft radial glows
-   - 2s intro card with title + byline in Fraunces 108px
-   - Book-page slides (15-25 words each, break on sentence terminators)
-   - GSAP timeline that recolours each `<span>` at its word timestamp
-   - Brand strip footer
-
-2. **`hyperframes/templates/common.mjs`** — shared helpers (page grouping algorithm, GSAP timeline emission, HTML escaping) that future mood templates reuse.
-
-3. **`src/media/slide-video.ts`** — stages the MP3 + transcript into the HyperFrames project, pipes story data into the mood template, runs `npx hyperframes lint` then `npx hyperframes render --output ...`. Returns the output MP4 path.
-
-4. **`src/media/subtitles.ts`** — whisper CLI integration with disk caching. The first call transcribes, subsequent calls on the same audio reuse the JSON.
-
-5. **`src/platforms/spotify-rss.ts`** — iTunes-compatible RSS generator. Walks the AudioKids output dir, parses each story JSON, probes MP3 duration, renders `<item>` entries. Submit once at podcasters.spotify.com and Spotify polls it.
-
-6. **`src/decisions/log.ts`** — JSONL decision log. Every `publish.<platform>` call appends `{action, reason, storySlug, platform, result, createdAt}`. Query with `postiz-agent decisions --slug ... --platform ...`.
-
----
+- **One publisher per file, uniform base class.** Adding a platform is: new file + one method + one line in `registry.ts`. Keeps each platform's quirks isolated.
+- **Transcription runs once.** Whisper processes the MP3 and caches the JSON. All three video variants consume the same timestamps.
+- **YouTube is delegated to YouTubeCLI.** It already has analytics, competitive research, and its own decision log (42 MCP tools). We shell out, we don't reimplement.
+- **Spotify is RSS, not API.** There is no per-episode publishing endpoint for indie podcasters. We host a feed; the platforms poll it.
+- **Video templates are plain HTML + GSAP, not React.** This project originally used Remotion. We migrated to HyperFrames because an agent can write new mood templates in HTML+CSS+GSAP directly. The output is also 40% smaller at equivalent quality.
+- **Decision log is JSONL, not SQL.** Append-only, trivially greppable, human-readable. The agent's memory across runs.
 
 ## Costs
 
 For 1 story/day across all 5 platforms:
 
-| Platform | API cost | Setup |
-|----------|----------|-------|
-| X | ~$0.01–0.07 per post → **~$2/month** (or $8 X Premium for 4h video limit) | developer.x.com, Native App |
-| TikTok | **free** | developers.tiktok.com, production review (5-10 days) |
-| Instagram | **free** | Meta App, Business/Creator IG account |
-| YouTube | **free** (quota-based) | Google Cloud project |
-| Spotify | **free** | RSS submission only |
+| Platform | Cost | Setup |
+|---|---|---|
+| X | ~$2–$10/mo (pay-per-use, or $8/mo Premium for 4h video limit) | developer.x.com |
+| TikTok | free | developers.tiktok.com (requires production review) |
+| Instagram | free | Meta App + Business/Creator IG account |
+| YouTube | free (quota) | Google Cloud project |
+| Spotify + Apple + Amazon | free | RSS submission only |
 
-**Total: ~$2-10/month.** Everything else is free.
+**Total: under ~$10/month** of API costs. Everything else is open source.
 
----
+## Status
 
-## Quick start
+Shipping:
+- End-to-end publish pipeline (status ok → render → upload → log)
+- `fantasia` mood template
+- Whisper transcription with caching
+- Spotify RSS generator
+- Decision log with CLI query
+- Self-hosted Postiz docker-compose
 
-```bash
-# 1. install
-pnpm install
-npx skills add heygen-com/hyperframes  # agent skills for HyperFrames (optional)
-
-# 2. configure
-cp .env.example .env
-# edit POSTIZ_API_URL, POSTIZ_API_KEY, AUDIOKIDS_OUTPUT_DIR
-
-# 3. deploy Postiz self-hosted (one-time)
-cd deploy
-cp .env.example .env       # add X_API_KEY, X_API_SECRET, etc.
-docker compose up -d
-# open http://localhost:5000, connect each platform via OAuth
-# copy Postiz API key back to the root .env
-
-# 4. publish (dry-run first — builds videos locally, uploads nothing)
-pnpm dev publish --slug dragon-marcos --platforms tiktok --dry-run
-
-# 5. real publish
-pnpm dev publish --slug dragon-marcos --platforms x,tiktok,instagram,youtube
-
-# 6. regenerate podcast feed (after each new story)
-pnpm dev rss --output ./tmp/feed.xml
-# upload feed.xml + MP3s to your public bucket; Spotify polls hourly
-```
-
----
-
-## Commands
-
-| Command | Purpose |
-|---------|---------|
-| `publish --slug X --platforms ...` | Full pipeline: transcribe + generate + publish |
-| `publish ... --dry-run` | Generate videos locally, don't upload |
-| `publish ... --skip-transcription` | Skip whisper (videos will have no captions) |
-| `rss --output ./feed.xml` | Regenerate Spotify RSS feed |
-| `decisions --slug X --platform Y` | Query the decision log |
-
-### Adding a new mood template
-
-1. Create `hyperframes/templates/<mood>.mjs` — copy `fantasia.mjs` as a starting point
-2. Change the palette, typography, and layout to match the mood
-3. AudioKids stories with `mood: "<mood>"` in their metadata automatically use it
-
-HyperFrames templates are pure HTML + CSS + GSAP, so an agent can write new ones directly. Run `npx hyperframes preview` in the `hyperframes/` folder for live reload while iterating.
-
----
-
-## Not doing (intentionally)
-
-- **Replacing Postiz.** Postiz already handles OAuth, scheduling, queueing, and 27 platforms.
-- **Replacing YouTubeCLI.** It already has everything we'd want for YouTube management.
-- **Scraping or cookie-based X posting.** The [x-reader](../x-reader) project uses X cookies for read operations, but writes through unofficial endpoints risk account suspension. The official API costs ~$2/month.
-- **A UI.** This is an agent tool, not a dashboard. Postiz's own UI handles all interactive scheduling.
-
----
+Roadmap:
+- Mood templates for `aventura`, `calma`, `comedia`, `misterio`, `emocionante`, `naturaleza`
+- Automatic multi-part splitting for IG Reels when a cuento exceeds 3 minutes
+- Scheduled publishing (currently everything is immediate)
 
 ## License
 
-Private. Internal to the AudioKids/Djinn Foundry toolkit.
+Internal to the DjinnFoundry / AudioKids toolkit.
+
+---
+
+## For agents
+
+See [`SKILL.md`](./SKILL.md) for workflow heuristics, platform quirks, and things to avoid. It's the contract this repo publishes for LLM agents to consume.
