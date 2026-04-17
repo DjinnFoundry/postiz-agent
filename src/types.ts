@@ -38,6 +38,8 @@ export const StorySchema = z.object({
     wordCount: z.number(),
     sentenceCount: z.number(),
     estimatedDurationMin: z.number(),
+    /** ISO8601 timestamp of when the story was generated; used as RSS pubDate. */
+    generatedAt: z.string().optional(),
   }),
 });
 export type Story = z.infer<typeof StorySchema>;
