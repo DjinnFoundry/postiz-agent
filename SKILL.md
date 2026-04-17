@@ -94,7 +94,7 @@ Every command accepts `--help` with examples. Commands that emit JSON also accep
 - The Postiz app requires production review on TikTok's side (5-10 days). Do not assume it's set up without running `integrations` first.
 
 ### Instagram
-- Reels cap at 3 minutes. For longer cuentos, split into multi-part posts with `Parte 1/N`, `Parte 2/N` in the caption. (The splitter is task #15 on the roadmap — if the user asks about it before it exists, confirm you'll build it.)
+- Reels cap at 3 minutes. For longer cuentos, the `InstagramPublisher` splits automatically into N ≤170s windows (aligned to `beats[]` when possible, else on word boundaries). Each part renders its own MP4 with a `PARTE i/N` ribbon in the intro card and is scheduled 5 minutes apart via Postiz `scheduledDate` so they land in order. The `PublishResult` for a multi-part publish has `parts[]` populated; each part gets its own decision log entry (`publish.instagram.part1`, `publish.instagram.part2`, ...).
 - Requires a Business or Creator account linked to a Facebook Page.
 
 ### YouTube
@@ -107,7 +107,7 @@ Every command accepts `--help` with examples. Commands that emit JSON also accep
 
 ## Adding a new mood template
 
-AudioKids stories have a `mood` field: `aventura`, `calma`, `comedia`, `misterio`, `emocionante`, `fantasia`, `naturaleza`. Currently only `fantasia` has a template; the others fall through to it as a fallback. When a fallback fires the orchestrator logs a warning (`⚠ No template for mood=<x>, falling back to fantasia`) AND attaches it to the `warnings[]` array of that publish result so it shows up in the decision log. You can query how often a given mood hit the fallback with `decisions --slug <slug> | jq .result.warnings`.
+AudioKids stories have a `mood` field: `aventura`, `calma`, `comedia`, `misterio`, `emocionante`, `fantasia`, `naturaleza`. Currently only `fantasia` has a template; the others fall back to `fantasia` automatically with a warning surfaced in `PublishResult.warnings`. The user has **intentionally** decided not to author the other six moods yet — do not build them unless explicitly asked.
 
 To add a new mood:
 
@@ -123,6 +123,28 @@ To add a new mood:
 4. Open the preview URL and iterate. When it looks right, commit.
 
 `hyperframes/` ships with the `hyperframes` skill from HeyGen — invoke `/hyperframes` in Claude Code sessions that touch this directory for patterns around `data-*` attribute semantics, shader rules, and timeline registration.
+
+## Reliability features you should know about
+
+These are wired into `publish` and `dispatch` by default. You only need to think about them when the defaults don't match the user's intent.
+
+### Retry with exponential backoff
+Every platform publish is wrapped in `retry()` (3 attempts, ~2s base, jittered). HTTP 5xx and network errors (`ECONNRESET`, `ETIMEDOUT`, `EAI_AGAIN`) are retryable; 4xx (auth/validation) is not. A transient 500 from Postiz does not lose the post.
+
+### 24-hour idempotency guard
+Before each real publish (not `--dry-run`), the orchestrator queries the decision log for a successful entry on the same `(slug, platform)` in the last 24 hours. If one exists, that platform is **skipped** with `{success: true, skipped: true, reason: "already published today"}`. To override, pass `--force`.
+
+### Webhook alerts
+If `ALERT_WEBHOOK_URL` is set in `.env`, the agent fires a 5-second-timeout POST with `{slug, platform, error, attempts, timestamp}` after a publish exhausts its retries. The webhook call is fire-and-forget; webhook failures never block the publish.
+
+### Caption moderation
+After whisper transcription, every word passes through `moderateWords()` against `src/media/spanish-blocklist.json`. Blocklisted tokens are replaced with `***` of equal length. The count of replacements is surfaced as a warning in `PublishResult.warnings`. Pass `--no-moderation` on `publish` for debugging only — never on production runs, since whisper mis-transcriptions of children's invented names are the main risk.
+
+### Whisper failure = hard stop (by default)
+If whisper crashes, the orchestrator aborts with exit 1 and `fatalCaptionFailure: true` on the report. No silent no-caption videos get to production. Override with `--allow-no-captions` when you explicitly want to ship a video without captions despite the crash. `--skip-transcription` is different: it is a deliberate opt-out (sets `captionStatus: "skipped"`) and never triggers the hard stop.
+
+### Mood fallback warning
+AudioKids stories declare a mood (`aventura`, `calma`, ...). Only `fantasia` currently ships a template; all other moods fall back to `fantasia` and emit a warning in `PublishResult.warnings` (`⚠ No template for mood=<x>, falling back to fantasia`). Query how often this fires with `decisions --slug <slug> --json | jq .result.warnings`.
 
 ## Reading the decision log
 
@@ -148,6 +170,18 @@ Future you, reading the log, will know why that retry exists.
 - **Do not clip stories to 60-90s "for TikTok style".** Stories run at narration pace. The user has been explicit: this is a book, not a song. See `memory/slide-pacing.md`.
 - **Do not post to X via x-reader or cookie scraping.** `x-reader` is read-only on purpose. Writes go through the official API via Postiz.
 - **Do not replace Postiz.** Postiz handles OAuth, scheduling, and queueing across 27 platforms. We sit in front of it, not instead of it.
+- **Do not bypass `--force` on real publishes without a reason.** The 24h idempotency guard is there to prevent duplicate posts when a scheduler fires twice. `--force` exists for the rare "re-publish after fixing a mood palette" case — record a meaningful `--reason` when you use it.
+- **Do not pass `--no-moderation` on production runs.** It is a debugging flag. Whisper mis-transcriptions of children's invented words are the one way this tool can embarrass a children's content brand; the Spanish blocklist is the defense.
+
+## Scheduling (cron / launchd / systemd)
+
+For unattended daily runs, use `dispatch` (not `publish`) so the agent picks the next unpublished story automatically. Config examples ship in `deploy/cron/`:
+
+- `deploy/cron/crontab.example` — Linux/macOS crontab
+- `deploy/cron/com.djinnfoundry.postiz-agent.plist` — macOS launchd
+- `deploy/cron/README.md` — systemd timer snippet for Linux servers
+
+Pair with `ALERT_WEBHOOK_URL` so failures surface promptly instead of sitting in `data/cron.log` until morning.
 
 ## When the user asks something ambiguous
 

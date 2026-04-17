@@ -32,7 +32,9 @@ AudioKids (MP3 + metadata)          Postiz (X/TikTok/IG adapters)
 | **YouTube** | Video | 16:9 · 1920×1080 · no limit |
 | **Spotify / Apple / Amazon** | Audio (RSS) | MP3 feed polled hourly |
 
-Each video is a slide-based composition: book-page pacing (15–25 words per slide), current-word highlight, narrator's voice as the audio track. The visual identity is driven by the story's `mood` field (`fantasia`, `aventura`, `calma`, `comedia`, `misterio`, `emocionante`, `naturaleza`) — one HTML template per mood. The first one shipped is `fantasia`.
+Each video is a slide-based composition: book-page pacing (15–25 words per slide), current-word highlight, narrator's voice as the audio track. The visual identity is driven by the story's `mood` field (`fantasia`, `aventura`, `calma`, `comedia`, `misterio`, `emocionante`, `naturaleza`) — one HTML template per mood. Today the project ships one template (`fantasia`); all other moods fall back to it with a warning recorded in the decision log.
+
+Instagram Reels cap at 3 minutes, so cuentos longer than that are **automatically split** into N ≤170s parts, each rendered with a `PARTE i/N` ribbon and scheduled 5 minutes apart so they land in order on your feed.
 
 ## Example
 
@@ -101,7 +103,7 @@ Full reference is in the CLI itself (`postiz-agent <cmd> --help`). Short version
 | Command | What it does |
 |---|---|
 | `dispatch` | Autonomously pick the next story not yet published and run it. Cron-safe. |
-| `status` | Env health check — run this first |
+| `status` | Env health check — run this first. Reports tooling + Postiz integration health per platform. `--strict` escalates warnings to exit 1. |
 | `integrations` | List connected Postiz accounts |
 | `render --slug <s> --platforms <list>` | Build MP4s, no upload |
 | `publish --slug <s> --platforms <list>` | Render + upload to each platform |
@@ -109,6 +111,32 @@ Full reference is in the CLI itself (`postiz-agent <cmd> --help`). Short version
 | `decisions [--slug s] [--platform p]` | Query the JSONL publish history |
 
 Every command supports `--help`. `dispatch`, `publish`, `render`, `status`, `integrations`, and `decisions` support `--json` for agent-readable output.
+
+### Reliability features (enabled by default on `publish` / `dispatch`)
+
+- **Retry with exponential backoff.** Transient 5xx / network errors retry 3 times (~2s base, jittered). 4xx does not retry.
+- **24h idempotency guard.** Skips any `(slug, platform)` that already has a successful decision-log entry in the last 24 hours. Bypass with `--force`.
+- **Webhook alerts.** Set `ALERT_WEBHOOK_URL`. After retries exhaust, the agent fires a 5s-timeout POST with `{slug, platform, error, attempts, timestamp}`. Fire-and-forget.
+- **Caption moderation.** Whisper output passes through a Spanish blocklist (`src/media/spanish-blocklist.json`) to guard against embarrassing mis-transcriptions. Replacements are recorded as warnings. Disable for debugging with `--no-moderation` (not recommended).
+- **Whisper failure = hard stop.** If whisper crashes, `publish` aborts with exit 1 before any platform is touched. Override with `--allow-no-captions` when you want the video out regardless.
+- **Instagram multi-part split.** Cuentos > 3 min on IG are auto-chunked into N ≤170s parts, each with a `PARTE i/N` ribbon, scheduled 5 minutes apart.
+
+### Scheduling
+
+Ready-to-edit configs ship in `deploy/cron/`:
+
+- `crontab.example` (Linux/macOS)
+- `com.djinnfoundry.postiz-agent.plist` (macOS launchd)
+- `README.md` (systemd timer for Linux servers)
+
+The typical setup:
+
+```bash
+# Linux/macOS crontab, daily at 08:00
+0 8 * * * cd /path/to/postiz-agent && pnpm dev dispatch --platforms x,tiktok,instagram,youtube --json >> data/cron.log 2>&1
+```
+
+`dispatch` exits 0 with `{"dispatched": false, "reason": "nothing pending"}` when there is nothing to publish, so you can run it more often than your content cadence without churn.
 
 ## Architecture
 
@@ -124,25 +152,31 @@ src/
 │   ├── whisper-json.ts      # parser
 │   └── slide-video.ts       # stages assets, drives `npx hyperframes render`
 │
+├── dispatch.ts              # picks the next unpublished story for autonomous runs
+├── idempotency.ts           # 24h duplicate-publish guard
 ├── platforms/
 │   ├── base.ts              # PlatformPublisher + VideoPublisher strategy base
+│   ├── postiz-video-publisher.ts # shared upload() for X/TikTok/IG
+│   ├── instagram-split.ts   # splits audio into ≤180s windows on beat/word boundaries
 │   ├── registry.ts          # platform → publisher
 │   ├── postiz.ts            # Postiz public API client (upload + create post)
 │   ├── youtube.ts           # shells out to YouTubeCLI
 │   ├── {x,tiktok,instagram,youtube,spotify}-publisher.ts
 │   └── spotify-rss.ts       # builds iTunes-format podcast feed
 │
+├── media/caption-moderation.ts  # Spanish blocklist filter for whisper output
 ├── decisions/log.ts         # JSONL append-only decision log
-└── lib/{process,ffprobe}.ts
+└── lib/{process,ffprobe,retry,alerts,slug}.ts
 
 hyperframes/                 # HyperFrames project (HTML → MP4, HeyGen/Apache-2.0)
 ├── hyperframes.json · CLAUDE.md · AGENTS.md
 └── templates/
-    ├── common.mjs           # buildPages, palette, HTML base
-    └── fantasia.mjs         # mood template (more coming)
+    ├── common.mjs           # buildPages, palette, HTML base, part-ribbon helper
+    └── fantasia.mjs         # the only mood template; all other moods fall back to this
 
 deploy/
 ├── docker-compose.yml       # self-hosted Postiz + Postgres + Redis
+├── cron/                    # crontab + launchd + systemd timer examples
 └── README.md                # OAuth setup walkthrough
 ```
 
@@ -172,17 +206,20 @@ For 1 story/day across all 5 platforms:
 ## Status
 
 Shipping:
-- End-to-end publish pipeline (status ok → render → upload → log)
-- `fantasia` mood template
+- End-to-end publish pipeline (status ok → render → upload → log), 93 unit + integration tests
+- `dispatch` subcommand for autonomous daily runs (cron/launchd/systemd examples in `deploy/cron/`)
+- Retry with backoff, 24h idempotency guard, webhook alerts, whisper-failure hard stop
+- Caption moderation against a Spanish blocklist
+- `fantasia` mood template (all other moods fall back to it with a warning)
+- Automatic multi-part splitting for IG Reels cuentos > 3 min
 - Whisper transcription with caching
-- Spotify RSS generator
+- Spotify RSS generator (per-episode image, 2-sentence teaser, `SPOTIFY_RSS_EXCLUDE_SLUGS` env)
 - Decision log with CLI query
 - Self-hosted Postiz docker-compose
 
-Roadmap:
-- Mood templates for `aventura`, `calma`, `comedia`, `misterio`, `emocionante`, `naturaleza`
-- Automatic multi-part splitting for IG Reels when a cuento exceeds 3 minutes
-- Scheduled publishing (currently everything is immediate)
+Intentionally not shipping yet:
+- Additional mood templates — `fantasia` covers all moods via fallback. Authoring the other six is deferred by product decision.
+- Engagement ingestion from YouTubeCLI + Postiz back into the decision log (future feedback loop).
 
 ## License
 
