@@ -8,6 +8,7 @@ import { PostizClient } from './platforms/postiz.js';
 import { config } from './config.js';
 import { run } from './lib/process.js';
 import { validateSlug } from './lib/slug.js';
+import { listCandidates, selectNextStory } from './dispatch.js';
 import { PlatformSchema, type Platform } from './types.js';
 
 const program = new Command();
@@ -55,6 +56,9 @@ program
   )
   .option('--dry-run', 'render videos locally but do not upload', false)
   .option('--skip-transcription', 'skip whisper word-level transcription (videos will have no captions)', false)
+  .option('--allow-no-captions', 'continue (with empty captions) even if whisper crashes; default is to abort', false)
+  .option('--force', 'bypass the 24-hour idempotency guard (republish even if already published today)', false)
+  .option('--no-moderation', 'skip the Spanish caption blocklist (debugging only; not recommended)')
   .option('--reason <text>', 'reason to record in the decision log', 'scheduled daily publication')
   .option('--json', 'emit only the JSON report on stdout (for agent parsing)', false)
   .addHelpText('after', `
@@ -64,7 +68,12 @@ Platforms:
 
 Exit codes:
   0 → every selected platform succeeded
-  1 → at least one platform failed (check the printed report or 'decisions')
+  1 → at least one platform failed, or whisper crashed without --allow-no-captions
+
+By default, if whisper transcription crashes we abort BEFORE rendering to avoid
+publishing videos with no captions. Use --skip-transcription to deliberately opt
+out of captions (sets captionStatus=skipped), or --allow-no-captions to survive a
+whisper failure (sets captionStatus=failed and records a warning).
 
 The decision log at data/decisions.jsonl records every attempt with reason+result.
 `);
@@ -77,10 +86,14 @@ program.commands[0].action(async (opts) => {
     platforms,
     dryRun: opts.dryRun,
     skipTranscription: opts.skipTranscription,
+    allowNoCaptions: opts.allowNoCaptions,
+    force: opts.force,
+    disableModeration: opts.moderation === false,
     reason: opts.reason,
   });
   if (opts.json) process.stdout.write(JSON.stringify(report) + '\n');
   else console.log('\n' + JSON.stringify(report, null, 2));
+  if (report.fatalCaptionFailure) process.exit(1);
   const failed = report.results.filter(r => !r.success);
   process.exit(failed.length > 0 ? 1 : 0);
 });
@@ -92,6 +105,7 @@ program
   .requiredOption('-s, --slug <slug>', 'AudioKids story slug')
   .option('-p, --platforms <list>', 'comma-separated platforms', 'tiktok,instagram,youtube,x')
   .option('--skip-transcription', 'skip whisper (no captions)', false)
+  .option('--allow-no-captions', 'continue (with empty captions) even if whisper crashes; default is to abort', false)
   .option('--json', 'emit only the JSON report on stdout', false)
   .addHelpText('after', `
 Produces tmp/<slug>/<slug>-<platform>.mp4 files. Useful for previewing before
@@ -106,10 +120,12 @@ but makes intent explicit in the decision log.
       platforms,
       dryRun: true,
       skipTranscription: opts.skipTranscription,
+      allowNoCaptions: opts.allowNoCaptions,
       reason: 'preview render (no upload)',
     });
     if (opts.json) process.stdout.write(JSON.stringify(report) + '\n');
     else console.log('\n' + JSON.stringify(report, null, 2));
+    if (report.fatalCaptionFailure) process.exit(1);
     process.exit(report.results.every(r => r.success) ? 0 : 1);
   });
 
@@ -176,9 +192,16 @@ program
   .command('status')
   .description('Check environment health: tools installed, services reachable, dirs exist')
   .option('--json', 'emit machine-readable JSON', false)
+  .option('--strict', 'fail (exit 1) on any warning, including disabled integrations', false)
   .addHelpText('after', `
 Run this first before a publish to catch config errors early.
-Checks: ffmpeg, whisper, hyperframes CLI, Postiz API, AudioKids output dir.
+Checks: ffmpeg, whisper, hyperframes CLI, Postiz API, AudioKids output dir,
+and each Postiz integration for X/TikTok/Instagram/YouTube (warns if disabled
+or missing — reconnect via the Postiz UI when that happens).
+
+Exit codes:
+  0 → no required check failed (default)
+  1 → at least one required check failed, OR any warning fired with --strict
 `)
   .action(async (opts) => {
     const checks = await runStatusChecks();
@@ -186,13 +209,16 @@ Checks: ffmpeg, whisper, hyperframes CLI, Postiz API, AudioKids output dir.
       process.stdout.write(JSON.stringify(checks, null, 2) + '\n');
     } else {
       for (const c of checks) {
-        const mark = c.ok ? '✓' : '✗';
+        const mark = c.ok ? '✓' : (c.warning ? '⚠' : '✗');
         const hint = c.detail ? `  ${c.detail}` : '';
         console.log(`${mark} ${c.label}${hint}`);
       }
     }
-    const failed = checks.filter(c => c.required && !c.ok);
-    process.exit(failed.length > 0 ? 1 : 0);
+    const failedRequired = checks.filter(c => c.required && !c.ok);
+    const warnings = checks.filter(c => !c.ok && c.warning);
+    if (failedRequired.length > 0) process.exit(1);
+    if (opts.strict && warnings.length > 0) process.exit(1);
+    process.exit(0);
   });
 
 // ─────────────────────────── integrations ───────────────────────────
@@ -216,6 +242,55 @@ program
     }
   });
 
+// ─────────────────────────── dispatch ───────────────────────────
+program
+  .command('dispatch')
+  .description('Autonomously pick the next story to publish and run it. Cron-safe.')
+  .addOption(
+    new Option('-p, --platforms <list>', 'comma-separated target platforms')
+      .default('x,tiktok,instagram,youtube'),
+  )
+  .option('--dry-run', 'resolve the next slug and render videos, but do not upload', false)
+  .option('--json', 'emit machine-readable JSON on stdout (nothing else)', false)
+  .option('--reason <text>', 'reason recorded in the decision log', 'scheduled autonomous dispatch')
+  .addHelpText('after', `
+Scans AUDIOKIDS_OUTPUT_DIR for every *.json + *.mp3 pair, consults the decision
+log, and picks the OLDEST story (by meta.generatedAt if present else file mtime)
+that does NOT yet have a successful publish in the last 30 days on ALL of the
+requested platforms. Exits 0 with {"dispatched": false, "reason": "nothing
+pending"} when nothing is to be done — safe to run from cron every N hours.
+
+Examples:
+  postiz-agent dispatch --json
+  postiz-agent dispatch --platforms tiktok,instagram
+  postiz-agent dispatch --dry-run
+`)
+  .action(async (opts) => {
+    const platforms = parsePlatforms(opts.platforms);
+    const log = new DecisionLog().list();
+    const candidates = listCandidates(config.audiokids.outputDir);
+    const slug = selectNextStory(candidates, log, platforms);
+    if (!slug) {
+      const payload = { dispatched: false, reason: 'nothing pending' };
+      if (opts.json) process.stdout.write(JSON.stringify(payload) + '\n');
+      else console.log('nothing pending');
+      process.exit(0);
+    }
+    if (opts.json) process.stdout.write(JSON.stringify({ dispatched: true, slug, platforms }) + '\n');
+    else console.log(`dispatching ${slug} → ${platforms.join(',')}`);
+
+    const orch = new Orchestrator();
+    const report = await orch.publish({
+      storySlug: slug,
+      platforms,
+      dryRun: opts.dryRun,
+      reason: opts.reason,
+    });
+    if (!opts.json) console.log('\n' + JSON.stringify(report, null, 2));
+    if (report.fatalCaptionFailure) process.exit(1);
+    process.exit(report.results.every(r => r.success) ? 0 : 1);
+  });
+
 // ─────────────────────────── helpers ───────────────────────────
 function parsePlatforms(csv: string): Platform[] {
   return csv
@@ -225,7 +300,7 @@ function parsePlatforms(csv: string): Platform[] {
     .map(p => PlatformSchema.parse(p));
 }
 
-interface Check { label: string; ok: boolean; detail?: string; required: boolean; }
+interface Check { label: string; ok: boolean; detail?: string; required: boolean; warning?: boolean; }
 
 async function runStatusChecks(): Promise<Check[]> {
   const checks: Check[] = [];
@@ -284,6 +359,28 @@ async function runStatusChecks(): Promise<Check[]> {
     detail: config.youtubecli.path,
     required: false,
   });
+
+  // Postiz integration health — warn on disabled or missing target-platform connections.
+  if (config.postiz.apiKey) {
+    try {
+      const integrations = await new PostizClient().listIntegrations();
+      const wanted: Array<'x'|'tiktok'|'instagram'|'youtube'> = ['x', 'tiktok', 'instagram', 'youtube'];
+      const reconnectUrl = config.postiz.apiUrl.replace(/\/public\/v1$/, '');
+      for (const p of wanted) {
+        const match = integrations.find(i => i.providerIdentifier === p);
+        if (!match) {
+          checks.push({ label: `${p} integration`, ok: false, detail: `not connected — connect at ${reconnectUrl}`, required: false, warning: true });
+        } else if (match.disabled) {
+          checks.push({ label: `${p} integration`, ok: false, detail: `${match.name} disabled — reconnect at ${reconnectUrl}`, required: false, warning: true });
+        } else {
+          checks.push({ label: `${p} integration`, ok: true, detail: match.name, required: false });
+        }
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      checks.push({ label: 'Postiz integrations', ok: false, detail: `could not query: ${msg}`, required: false, warning: true });
+    }
+  }
 
   return checks;
 }
