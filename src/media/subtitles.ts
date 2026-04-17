@@ -2,18 +2,15 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { run } from '../lib/process.js';
 import { parseWhisperJson, flattenWords } from './whisper-json.js';
+import type { WordEntry } from '../types.js';
+
+export type { WordEntry };
 
 export interface TranscribeOptions {
   audioPath: string;
   outputDir: string;
   language?: string;
   model?: 'tiny' | 'base' | 'small' | 'medium' | 'large-v3';
-}
-
-export interface WordEntry {
-  text: string;
-  start: number;
-  end: number;
 }
 
 export interface TranscribeResult {
