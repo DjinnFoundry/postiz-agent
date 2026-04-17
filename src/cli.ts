@@ -189,9 +189,16 @@ program
   .command('status')
   .description('Check environment health: tools installed, services reachable, dirs exist')
   .option('--json', 'emit machine-readable JSON', false)
+  .option('--strict', 'fail (exit 1) on any warning, including disabled integrations', false)
   .addHelpText('after', `
 Run this first before a publish to catch config errors early.
-Checks: ffmpeg, whisper, hyperframes CLI, Postiz API, AudioKids output dir.
+Checks: ffmpeg, whisper, hyperframes CLI, Postiz API, AudioKids output dir,
+and each Postiz integration for X/TikTok/Instagram/YouTube (warns if disabled
+or missing — reconnect via the Postiz UI when that happens).
+
+Exit codes:
+  0 → no required check failed (default)
+  1 → at least one required check failed, OR any warning fired with --strict
 `)
   .action(async (opts) => {
     const checks = await runStatusChecks();
@@ -199,13 +206,16 @@ Checks: ffmpeg, whisper, hyperframes CLI, Postiz API, AudioKids output dir.
       process.stdout.write(JSON.stringify(checks, null, 2) + '\n');
     } else {
       for (const c of checks) {
-        const mark = c.ok ? '✓' : '✗';
+        const mark = c.ok ? '✓' : (c.warning ? '⚠' : '✗');
         const hint = c.detail ? `  ${c.detail}` : '';
         console.log(`${mark} ${c.label}${hint}`);
       }
     }
-    const failed = checks.filter(c => c.required && !c.ok);
-    process.exit(failed.length > 0 ? 1 : 0);
+    const failedRequired = checks.filter(c => c.required && !c.ok);
+    const warnings = checks.filter(c => !c.ok && c.warning);
+    if (failedRequired.length > 0) process.exit(1);
+    if (opts.strict && warnings.length > 0) process.exit(1);
+    process.exit(0);
   });
 
 // ─────────────────────────── integrations ───────────────────────────
@@ -287,7 +297,7 @@ function parsePlatforms(csv: string): Platform[] {
     .map(p => PlatformSchema.parse(p));
 }
 
-interface Check { label: string; ok: boolean; detail?: string; required: boolean; }
+interface Check { label: string; ok: boolean; detail?: string; required: boolean; warning?: boolean; }
 
 async function runStatusChecks(): Promise<Check[]> {
   const checks: Check[] = [];
@@ -342,6 +352,28 @@ async function runStatusChecks(): Promise<Check[]> {
     detail: config.youtubecli.path,
     required: false,
   });
+
+  // Postiz integration health — warn on disabled or missing target-platform connections.
+  if (config.postiz.apiKey) {
+    try {
+      const integrations = await new PostizClient().listIntegrations();
+      const wanted: Array<'x'|'tiktok'|'instagram'|'youtube'> = ['x', 'tiktok', 'instagram', 'youtube'];
+      const reconnectUrl = config.postiz.apiUrl.replace(/\/public\/v1$/, '');
+      for (const p of wanted) {
+        const match = integrations.find(i => i.providerIdentifier === p);
+        if (!match) {
+          checks.push({ label: `${p} integration`, ok: false, detail: `not connected — connect at ${reconnectUrl}`, required: false, warning: true });
+        } else if (match.disabled) {
+          checks.push({ label: `${p} integration`, ok: false, detail: `${match.name} disabled — reconnect at ${reconnectUrl}`, required: false, warning: true });
+        } else {
+          checks.push({ label: `${p} integration`, ok: true, detail: match.name, required: false });
+        }
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      checks.push({ label: 'Postiz integrations', ok: false, detail: `could not query: ${msg}`, required: false, warning: true });
+    }
+  }
 
   return checks;
 }
