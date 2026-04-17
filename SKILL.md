@@ -42,6 +42,8 @@ This checks: ffmpeg, whisper, npx, Postiz API reachability, POSTIZ_API_KEY prese
 
 Do **not** skip the render step unless the user has explicitly told you to run autonomously. A broken mood template or a whisper mis-alignment wastes API calls and floods the user's feed with bad content.
 
+The orchestrator also guards against whisper failures: if transcription crashes, the run aborts before render with exit 1 (no silent no-caption videos get posted). Pass `--allow-no-captions` to override when you truly want the video out regardless.
+
 ## Commands — quick reference
 
 | Command | Purpose | Exit codes |
@@ -61,6 +63,7 @@ Every command accepts `--help` with examples. Commands that emit JSON also accep
 - `--platforms` is comma-separated: `x,tiktok,instagram,youtube,spotify`. `spotify` is a valid target but produces no per-story output — it relies on the RSS feed.
 - `--dry-run` (publish only) renders videos but skips uploads. Equivalent to running `render` except the decision log records intent.
 - `--skip-transcription` turns off whisper. Videos will have no captions. Only use if whisper is broken and you want to still get a video out, or if the audio is non-speech.
+- `--allow-no-captions` (publish/render) lets the pipeline continue when whisper CRASHES (as opposed to `--skip-transcription` which is a deliberate opt-out). Without this flag, a whisper crash aborts before render with exit 1 — you do NOT want silent no-caption videos on the feed.
 - `--reason` (publish only) is a free-text string recorded in the decision log. Use this when the action is something other than the default daily schedule — e.g. `--reason "re-publish after fixing mood palette"`.
 - `--json` on `status`, `publish`, `render`, `decisions`, `integrations` switches to machine-readable output.
 

@@ -38,7 +38,8 @@ export const StorySchema = z.object({
     wordCount: z.number(),
     sentenceCount: z.number(),
     estimatedDurationMin: z.number(),
-  }),
+    generatedAt: z.string().optional(),
+  }).passthrough(),
 });
 export type Story = z.infer<typeof StorySchema>;
 
@@ -71,6 +72,8 @@ export interface StoryAssets {
   metadata: Story;
 }
 
+export type CaptionStatus = 'ok' | 'skipped' | 'failed';
+
 export interface PublishResult {
   platform: Platform;
   success: boolean;
@@ -78,6 +81,18 @@ export interface PublishResult {
   url?: string;
   error?: string;
   timestamp: string;
+  /** If true, the platform was skipped (already published, or --dry-run short-circuit). */
+  skipped?: boolean;
+  /** Short machine-readable reason (e.g. "already published today"). */
+  reason?: string;
+  /** 1-based part index when a single publish is split across multiple parts (IG multi-part). */
+  partIndex?: number;
+  /** Total parts in this multi-part publish. */
+  partTotal?: number;
+  /** Status of the word-level transcript used to render captions. */
+  captionStatus?: CaptionStatus;
+  /** Non-fatal warnings surfaced during this publish (mood fallback, moderation, etc.). */
+  warnings?: string[];
 }
 
 export interface DecisionLogEntry {
