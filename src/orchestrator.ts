@@ -42,20 +42,31 @@ export class Orchestrator {
 
     const words = opts.skipTranscription ? [] : (await this.tryTranscribe(assets.audioMp3Path, workDir, m.meta.locale)) ?? [];
 
-    const results: PublishResult[] = [];
-    for (const platform of opts.platforms) {
-      console.log(`\n→ ${platform}`);
-      const publisher = getPublisher(platform);
-      const result = await publisher.publish({ assets, workDir, words, dryRun: opts.dryRun });
-      results.push(result);
-      this.decisions.record({
-        action: `publish.${platform}`,
-        storySlug: opts.storySlug,
-        platform,
-        reason: opts.reason ?? 'scheduled daily publication',
-        result,
-      });
-    }
+    // Run platforms concurrently: render + upload are CPU/IO bound per platform,
+    // and there is no cross-platform coupling. allSettled guarantees we record
+    // every outcome even if one publisher throws.
+    const settled = await Promise.allSettled(
+      opts.platforms.map(async platform => {
+        console.log(`→ ${platform}: starting`);
+        const publisher = getPublisher(platform);
+        const result = await publisher.publish({ assets, workDir, words, dryRun: opts.dryRun });
+        await this.decisions.record({
+          action: `publish.${platform}`,
+          storySlug: opts.storySlug,
+          platform,
+          reason: opts.reason ?? 'scheduled daily publication',
+          result,
+        });
+        return result;
+      }),
+    );
+
+    const results: PublishResult[] = settled.map((s, i) => {
+      if (s.status === 'fulfilled') return s.value;
+      const platform = opts.platforms[i];
+      const error = s.reason instanceof Error ? s.reason.message : String(s.reason);
+      return { platform, success: false, error, timestamp: new Date().toISOString() };
+    });
 
     return { slug: opts.storySlug, results };
   }
