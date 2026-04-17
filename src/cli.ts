@@ -8,6 +8,7 @@ import { AudioKidsReader } from './audiokids/reader.js';
 import { PostizClient } from './platforms/postiz.js';
 import { config } from './config.js';
 import { run } from './lib/process.js';
+import { listCandidates, selectNextStory } from './dispatch.js';
 import { PlatformSchema, type Platform } from './types.js';
 
 const program = new Command();
@@ -226,6 +227,55 @@ program
       console.error(`Could not reach Postiz at ${config.postiz.apiUrl}: ${err instanceof Error ? err.message : err}`);
       process.exit(1);
     }
+  });
+
+// ─────────────────────────── dispatch ───────────────────────────
+program
+  .command('dispatch')
+  .description('Autonomously pick the next story to publish and run it. Cron-safe.')
+  .addOption(
+    new Option('-p, --platforms <list>', 'comma-separated target platforms')
+      .default('x,tiktok,instagram,youtube'),
+  )
+  .option('--dry-run', 'resolve the next slug and render videos, but do not upload', false)
+  .option('--json', 'emit machine-readable JSON on stdout (nothing else)', false)
+  .option('--reason <text>', 'reason recorded in the decision log', 'scheduled autonomous dispatch')
+  .addHelpText('after', `
+Scans AUDIOKIDS_OUTPUT_DIR for every *.json + *.mp3 pair, consults the decision
+log, and picks the OLDEST story (by meta.generatedAt if present else file mtime)
+that does NOT yet have a successful publish in the last 30 days on ALL of the
+requested platforms. Exits 0 with {"dispatched": false, "reason": "nothing
+pending"} when nothing is to be done — safe to run from cron every N hours.
+
+Examples:
+  postiz-agent dispatch --json
+  postiz-agent dispatch --platforms tiktok,instagram
+  postiz-agent dispatch --dry-run
+`)
+  .action(async (opts) => {
+    const platforms = parsePlatforms(opts.platforms);
+    const log = new DecisionLog().list();
+    const candidates = listCandidates(config.audiokids.outputDir);
+    const slug = selectNextStory(candidates, log, platforms);
+    if (!slug) {
+      const payload = { dispatched: false, reason: 'nothing pending' };
+      if (opts.json) process.stdout.write(JSON.stringify(payload) + '\n');
+      else console.log('nothing pending');
+      process.exit(0);
+    }
+    if (opts.json) process.stdout.write(JSON.stringify({ dispatched: true, slug, platforms }) + '\n');
+    else console.log(`dispatching ${slug} → ${platforms.join(',')}`);
+
+    const orch = new Orchestrator();
+    const report = await orch.publish({
+      storySlug: slug,
+      platforms,
+      dryRun: opts.dryRun,
+      reason: opts.reason,
+    });
+    if (!opts.json) console.log('\n' + JSON.stringify(report, null, 2));
+    if (report.fatalCaptionFailure) process.exit(1);
+    process.exit(report.results.every(r => r.success) ? 0 : 1);
   });
 
 // ─────────────────────────── helpers ───────────────────────────

@@ -32,6 +32,20 @@ This checks: ffmpeg, whisper, npx, Postiz API reachability, POSTIZ_API_KEY prese
 
 ## The daily publishing workflow
 
+### Automated / scheduled (preferred)
+
+```
+postiz-agent dispatch --platforms x,tiktok,instagram,youtube
+```
+
+`dispatch` is the autonomous entry point. It scans `AUDIOKIDS_OUTPUT_DIR`, consults
+the decision log, and picks the oldest story not yet fully published to the target
+platforms in the last 30 days. Exits 0 with `{"dispatched": false, "reason":
+"nothing pending"}` when there is nothing to do — safe to run every N hours from
+cron/systemd. Pair with `--json` for clean, parseable output.
+
+### Interactive (preview before shipping)
+
 ```
 1. postiz-agent status                                   # sanity check
 2. postiz-agent render --slug <slug> --platforms tiktok  # preview one platform
@@ -48,6 +62,7 @@ The orchestrator also guards against whisper failures: if transcription crashes,
 
 | Command | Purpose | Exit codes |
 |---------|---------|------------|
+| `dispatch` | Auto-pick the next unpublished story and publish it (cron entry point) | 0 ok or nothing pending, 1 on publish failure |
 | `status` | Environment health check | 0 ok, 1 if required deps missing |
 | `integrations` | List connected Postiz OAuth accounts | 0 ok, 1 if Postiz unreachable |
 | `render --slug X --platforms ...` | Build MP4s, no upload | 0 ok, 1 on render failure |
