@@ -56,13 +56,19 @@ export class SpotifyRssBuilder {
       const stat = statSync(mp3Path);
       const duration = await probeDurationSec(mp3Path);
 
+      // Prefer story.meta.generatedAt (stable across re-renders) over file mtime
+      // (unstable, would reorder feed + re-notify subscribers on any file touch).
+      const pubSource = story.meta.generatedAt
+        ? new Date(story.meta.generatedAt)
+        : new Date(statSync(join(this.audiokidsDir, jsonFile)).mtimeMs);
+
       episodes.push({
         slug,
         title: story.titulo,
         description: story.contenido.slice(0, 500),
         audioUrl: `${this.publicFeedBase}/audio/${slug}.mp3`,
         durationSec: Math.round(duration),
-        pubDate: new Date(stat.mtimeMs).toUTCString(),
+        pubDate: pubSource.toUTCString(),
         mp3SizeBytes: stat.size,
       });
     }
