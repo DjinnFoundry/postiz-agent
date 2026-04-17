@@ -33,13 +33,25 @@ export abstract class VideoPublisher implements PlatformPublisher {
   async publish(ctx: PublishContext): Promise<PublishResult> {
     const ts = new Date().toISOString();
     try {
-      const videoPath = await this.buildVideo(ctx);
+      const { videoPath, warnings } = await this.buildVideo(ctx);
       if (ctx.dryRun) {
         console.log(`  [dry-run] would publish to ${this.platform}: ${videoPath}`);
-        return { platform: this.platform, success: true, url: `file://${videoPath}`, timestamp: ts };
+        return {
+          platform: this.platform,
+          success: true,
+          url: `file://${videoPath}`,
+          timestamp: ts,
+          ...(warnings.length ? { warnings } : {}),
+        };
       }
       const result = await this.upload(videoPath, ctx);
-      return { platform: this.platform, success: true, ...result, timestamp: ts };
+      return {
+        platform: this.platform,
+        success: true,
+        ...result,
+        timestamp: ts,
+        ...(warnings.length ? { warnings: [...(result.warnings ?? []), ...warnings] } : {}),
+      };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`  ${this.platform} failed: ${msg}`);
@@ -47,7 +59,7 @@ export abstract class VideoPublisher implements PlatformPublisher {
     }
   }
 
-  protected async buildVideo(ctx: PublishContext): Promise<string> {
+  protected async buildVideo(ctx: PublishContext): Promise<{ videoPath: string; warnings: string[] }> {
     if (!ctx.words?.length) {
       throw new Error(
         `cannot build a slide video for ${this.platform} without a transcript. ` +
@@ -56,13 +68,13 @@ export abstract class VideoPublisher implements PlatformPublisher {
       );
     }
     const videoPath = join(ctx.workDir, `${ctx.assets.slug}-${this.platform}.mp4`);
-    await this.slides.build({
+    const result = await this.slides.build({
       platform: this.platform,
       assets: ctx.assets,
       outputPath: videoPath,
       words: ctx.words,
     });
-    return videoPath;
+    return { videoPath: result.outputPath, warnings: result.warnings };
   }
 
   protected abstract upload(videoPath: string, ctx: PublishContext): Promise<Partial<PublishResult>>;

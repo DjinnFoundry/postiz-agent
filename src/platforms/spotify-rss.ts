@@ -21,6 +21,7 @@ export interface EpisodeItem {
   title: string;
   description: string;
   audioUrl: string;
+  imageUrl: string;
   durationSec: number;
   pubDate: string;
   mp3SizeBytes: number;
@@ -31,6 +32,8 @@ export class SpotifyRssBuilder {
     private readonly channel: PodcastChannelMeta,
     private readonly audiokidsDir: string = config.audiokids.outputDir,
     private readonly publicFeedBase: string = config.spotify.publicFeedUrl.replace(/\/feed\.xml$/, ''),
+    private readonly excludeSlugs: Set<string> = parseExcludes(process.env.SPOTIFY_RSS_EXCLUDE_SLUGS),
+    private readonly probeDuration: (mp3Path: string) => Promise<number> = probeDurationSec,
   ) {}
 
   async build(): Promise<string> {
@@ -46,6 +49,7 @@ export class SpotifyRssBuilder {
 
     for (const jsonFile of files) {
       const slug = jsonFile.replace(/\.json$/, '');
+      if (this.excludeSlugs.has(slug)) continue;
       const mp3Path = join(this.audiokidsDir, `${slug}.mp3`);
       if (!existsSync(mp3Path)) continue;
 
@@ -54,7 +58,7 @@ export class SpotifyRssBuilder {
       try { story = StorySchema.parse(raw); } catch { continue; }
 
       const stat = statSync(mp3Path);
-      const duration = await probeDurationSec(mp3Path);
+      const duration = await this.probeDuration(mp3Path);
 
       // Prefer story.meta.generatedAt (stable across re-renders) over file mtime
       // (unstable, would reorder feed + re-notify subscribers on any file touch).
@@ -65,8 +69,9 @@ export class SpotifyRssBuilder {
       episodes.push({
         slug,
         title: story.titulo,
-        description: story.contenido.slice(0, 500),
+        description: buildTeaser(story.contenido),
         audioUrl: `${this.publicFeedBase}/audio/${slug}.mp3`,
+        imageUrl: `${this.publicFeedBase}/covers/${slug}.png`,
         durationSec: Math.round(duration),
         pubDate: pubSource.toUTCString(),
         mp3SizeBytes: stat.size,
@@ -110,13 +115,43 @@ ${items}
       <enclosure url="${esc(e.audioUrl)}" length="${e.mp3SizeBytes}" type="audio/mpeg" />
       <guid isPermaLink="false">${e.slug}</guid>
       <pubDate>${e.pubDate}</pubDate>
+      <itunes:image href="${esc(e.imageUrl)}" />
       <itunes:duration>${e.durationSec}</itunes:duration>
       <itunes:explicit>false</itunes:explicit>
     </item>`;
   }
 }
 
+function parseExcludes(raw: string | undefined): Set<string> {
+  if (!raw) return new Set();
+  return new Set(raw.split(',').map(s => s.trim()).filter(Boolean));
+}
+
+/**
+ * Teaser description: first two sentences of `contenido`. If sentence-split
+ * yields too little text (< 20 chars), fall back to the first 300 characters.
+ */
+export function buildTeaser(contenido: string): string {
+  const trimmed = contenido.trim();
+  if (!trimmed) return '';
+  const sentences = splitSentences(trimmed).slice(0, 2).join(' ').trim();
+  if (sentences.length >= 20) return sentences;
+  return trimmed.slice(0, 300);
+}
+
+function splitSentences(text: string): string[] {
+  // Capture the punctuation so we don't lose it when joining.
+  const out: string[] = [];
+  const re = /[^.!?…]+[.!?…]+(?=\s|$)/gu;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    out.push(m[0].trim());
+  }
+  // If no terminal punctuation at all, return the whole string as one sentence.
+  if (out.length === 0) out.push(text);
+  return out;
+}
+
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
-
