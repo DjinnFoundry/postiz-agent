@@ -99,6 +99,7 @@ Full reference is in the CLI itself (`postiz-agent <cmd> --help`). Short version
 
 | Command | What it does |
 |---|---|
+| `dispatch` | Autonomously pick the next story not yet published and run it. Cron-safe. |
 | `status` | Env health check — run this first |
 | `integrations` | List connected Postiz accounts |
 | `render --slug <s> --platforms <list>` | Build MP4s, no upload |
@@ -106,7 +107,7 @@ Full reference is in the CLI itself (`postiz-agent <cmd> --help`). Short version
 | `rss --output <path>` | Rebuild the Spotify/Apple RSS feed |
 | `decisions [--slug s] [--platform p]` | Query the JSONL publish history |
 
-Every command supports `--help`. `publish`, `render`, `status`, `integrations`, and `decisions` support `--json` for agent-readable output.
+Every command supports `--help`. `dispatch`, `publish`, `render`, `status`, `integrations`, and `decisions` support `--json` for agent-readable output.
 
 ## Architecture
 
