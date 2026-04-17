@@ -1,0 +1,28 @@
+# dependencies & build
+node_modules/
+dist/
+*.tsbuildinfo
+
+# env
+.env
+.env.local
+
+# system
+.DS_Store
+*.log
+
+# workspace-local
+tmp/
+output/
+data/
+.claude/
+
+# hyperframes: only keep templates + configs, not generated artifacts
+hyperframes/index.html
+hyperframes/transcript.json
+hyperframes/assets/
+hyperframes/renders/
+
+# deploy: never commit Postiz runtime state
+deploy/postiz-data/
+deploy/.env

@@ -1,0 +1,30 @@
+{
+  "name": "postiz-agent",
+  "version": "0.1.0",
+  "description": "Autonomous social publishing agent for AudioKids stories. Bridges AudioKids output to Postiz (X/TikTok/IG), YouTubeCLI, and Spotify RSS.",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "postiz-agent": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli.ts",
+    "test": "vitest run",
+    "publish-story": "tsx src/orchestrator.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "dotenv": "^16.4.5",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.4"
+  }
+}
