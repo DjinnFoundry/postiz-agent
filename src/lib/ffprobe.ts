@@ -9,15 +9,3 @@ export async function probeDurationSec(path: string): Promise<number> {
   ]);
   return parseFloat(stdout.trim()) || 0;
 }
-
-export async function probeVideoDimensions(path: string): Promise<{ width: number; height: number; durationSec: number }> {
-  const { stdout } = await run('ffprobe', [
-    '-v', 'error',
-    '-select_streams', 'v:0',
-    '-show_entries', 'stream=width,height,duration',
-    '-of', 'csv=p=0',
-    path,
-  ]);
-  const [width, height, duration] = stdout.trim().split(',');
-  return { width: parseInt(width, 10), height: parseInt(height, 10), durationSec: parseFloat(duration) || 0 };
-}
