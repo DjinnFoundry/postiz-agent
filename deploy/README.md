@@ -7,9 +7,11 @@
    cp .env.example .env
    ```
 
-2. Generate JWT secret:
+2. Generate the required secrets (both are mandatory — the compose file will
+   refuse to start without them):
    ```
    echo "POSTIZ_JWT_SECRET=$(openssl rand -hex 32)" >> .env
+   echo "POSTIZ_DB_PASSWORD=$(openssl rand -hex 24)" >> .env
    ```
 
 3. Add your platform credentials to `.env`:
@@ -28,6 +30,23 @@
    ```
 
 5. Open http://localhost:5000, create an admin account, then connect each platform via Integrations.
+
+   **First-time admin creation:** the default `POSTIZ_DISABLE_REGISTRATION=true`
+   blocks the signup page. To create your admin, temporarily set
+   `POSTIZ_DISABLE_REGISTRATION=false` in `.env`, restart with
+   `docker compose up -d`, register, then flip it back to `true` and restart.
+
+## Exposing Postiz beyond localhost
+
+If you plan to serve the Postiz UI/API on a public hostname (reverse proxy,
+Docker Swarm, cloud VM, etc.):
+
+- Make sure `POSTIZ_DISABLE_REGISTRATION=true` is set before you expose port
+  5000 to the internet. Otherwise anyone can register an account and use the
+  public API to post to your connected X / TikTok / Instagram accounts.
+- Terminate TLS in front of the container. The default `MAIN_URL` is `http://`.
+- Restrict the postgres container to the internal docker network (default).
+  Do NOT add a `ports:` mapping for `postgres` or `redis`.
 
 6. Once connected, create an API key under Settings → Developers → Public API and add to the root `.env`:
    ```

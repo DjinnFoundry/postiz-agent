@@ -8,14 +8,18 @@ services:
       MAIN_URL: "http://localhost:5000"
       FRONTEND_URL: "http://localhost:5000"
       NEXT_PUBLIC_BACKEND_URL: "http://localhost:5000/api"
-      JWT_SECRET: "${POSTIZ_JWT_SECRET:-change_me_in_env}"
+      JWT_SECRET: "${POSTIZ_JWT_SECRET:?POSTIZ_JWT_SECRET must be set in deploy/.env — generate with: openssl rand -hex 32}"
 
       # ── Data ──
-      DATABASE_URL: "postgresql://postgres:postiz@postgres:5432/postiz"
+      DATABASE_URL: "postgresql://postgres:${POSTIZ_DB_PASSWORD:?POSTIZ_DB_PASSWORD must be set in deploy/.env}@postgres:5432/postiz"
       REDIS_URL: "redis://redis:6379"
       BACKEND_INTERNAL_URL: "http://localhost:3000"
       IS_GENERAL: "true"
-      DISABLE_REGISTRATION: "false"
+      # Keep registration disabled by default. Flip to "false" only while creating
+      # the first admin account, then flip back. Leaving this "false" on a
+      # publicly reachable instance lets anyone on the internet register and
+      # obtain API access to your connected social accounts.
+      DISABLE_REGISTRATION: "${POSTIZ_DISABLE_REGISTRATION:-true}"
       STORAGE_PROVIDER: "local"
       UPLOAD_DIRECTORY: "/uploads"
       NEXT_PUBLIC_UPLOAD_DIRECTORY: "/uploads"
@@ -53,7 +57,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postiz
+      POSTGRES_PASSWORD: "${POSTIZ_DB_PASSWORD:?POSTIZ_DB_PASSWORD must be set in deploy/.env}"
       POSTGRES_DB: postiz
     volumes:
       - ./postiz-data/postgres:/var/lib/postgresql/data
