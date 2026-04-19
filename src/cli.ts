@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command, Option } from 'commander';
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { Orchestrator } from './orchestrator.js';
 import { SpotifyRssBuilder } from './platforms/spotify-rss.js';
 import { DecisionLog } from './decisions/log.js';
@@ -157,6 +158,7 @@ feed URL once at podcasters.spotify.com/dash/submit. Spotify polls it hourly.
       imageUrl: opts.image,
     });
     const xml = await builder.build();
+    mkdirSync(dirname(opts.output), { recursive: true });
     writeFileSync(opts.output, xml, 'utf-8');
     console.log(`wrote ${opts.output} (${xml.length} bytes)`);
   });
