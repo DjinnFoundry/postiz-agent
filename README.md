@@ -1,30 +1,46 @@
 # postiz-agent
 
-> Autonomous daily publisher for [AudioKids](https://github.com/DjinnFoundry/audiokids) audio stories.
-> Turns one MP3 cuento into platform-ready posts for X, TikTok, Instagram, YouTube, and Spotify — with book-page slide videos, word-level karaoke captions, and a decision log an LLM can read back later.
+> Cron-driven autonomous publisher for any local MP3-first pipeline. Consumes a directory of `slug.mp3 + slug.json + slug-cover.png`, renders per-platform slide videos with word-level karaoke captions, and publishes to X, TikTok, Instagram, YouTube, and Spotify (RSS) via [Postiz](https://github.com/gitroomhq/postiz-app) self-hosted.
+
+Extracted and open-sourced from the [AudioKids](https://audiokids.org) daily-publishing pipeline because the pattern generalises: whisper-crash-hard-stop, 24h per-platform idempotency, retry with backoff, webhook alerts after exhaustion, Spanish caption-moderation blocklist, and a JSONL decision log designed for an LLM to grep across runs.
 
 **Agents: read [`SKILL.md`](./SKILL.md) first.** It explains when to use each command, what the flags mean, and what NOT to do.
+
+## Who this is for
+
+Narrow on purpose:
+
+- You run a **local MP3-first pipeline** (AudioKids, a home-grown TTS loop, a podcast staging folder, anything that drops `slug.mp3 + slug.json` into a directory) and want a cron-driven autonomous publisher on top of it.
+- You want the publish layer **self-hosted and open-source**, not a SaaS dashboard. Postiz handles OAuth and scheduling; this agent handles the MP3 → video step and the orchestration.
+- You want an **agent-readable decision log** (`data/decisions.jsonl`) so an LLM can reason across runs without re-hitting platform APIs.
+
+Not for:
+
+- General podcasters looking for "audio → viral clips." [Headliner](https://www.headliner.app/), [Descript](https://www.descript.com/), [Opus Clip](https://www.opus.pro/), and [Recast Studio](https://recast.studio/) already do that with more visual variety and no code. Use those unless you specifically need the above.
+- Anyone who doesn't have a local MP3 pipeline and doesn't want to stand one up. Without the upstream, there's nothing to publish.
 
 ---
 
 ## The gap it fills
 
-[Postiz](https://github.com/gitroomhq/postiz-app) is a great social scheduler but it's content-agnostic — you hand it a finished post and it publishes. AudioKids produces MP3 files. No social platform accepts raw audio. This project is the layer that turns one into the other.
+Postiz is a great social scheduler but it's content-agnostic — you hand it a finished post and it publishes. An MP3 pipeline produces audio files. No social platform accepts raw audio. This project is the layer that turns one into the other.
 
 ```
-AudioKids (MP3 + metadata)          Postiz (X/TikTok/IG adapters)
-        │                                   ▲
-        └─── postiz-agent ──────────────────┘
-              │
-              ├─ whisper word-level transcription
-              ├─ HyperFrames slide video per aspect ratio
-              ├─ YouTubeCLI delegation (for YouTube)
-              └─ RSS feed (for Spotify/Apple)
+  local/output/                          Postiz (X/TikTok/IG adapters)
+  ├─ slug.mp3                                     ▲
+  ├─ slug.json  ─────── postiz-agent ─────────────┘
+  └─ slug-cover.png        │
+                           ├─ whisper word-level transcription
+                           ├─ HyperFrames slide video per aspect ratio
+                           ├─ external YouTube CLI (bring-your-own)
+                           └─ RSS feed (for Spotify/Apple)
 ```
 
-## AudioKids output formats supported
+The story's [input schema](./src/types.ts) is small (title, content, mood, beats, metadata) — adapting a non-AudioKids source is a single-file change under `src/adapters/`.
 
-The `audiokids` adapter reads two layouts transparently per story (you can mix them in one directory):
+### AudioKids output formats supported
+
+The bundled `audiokids` adapter reads two layouts transparently per story (you can mix them in one directory):
 
 | Layout | Files                                                | When                       |
 |--------|------------------------------------------------------|----------------------------|
@@ -77,6 +93,8 @@ pnpm install
 cp .env.example .env
 # edit POSTIZ_API_URL, POSTIZ_API_KEY, AUDIOKIDS_OUTPUT_DIR
 # (optional) set ALERT_WEBHOOK_URL to get a POST when a platform publish fails
+# (optional) set YOUTUBECLI_PATH if you have a YouTube CLI to delegate to;
+#            leave unset to skip YouTube
 
 # Optional: install HyperFrames skills for Claude Code / Cursor
 npx skills add heygen-com/hyperframes
@@ -271,12 +289,12 @@ deploy/
 - **ContentBundle as the neutral contract.** AudioKids is the first consumer, not the core. Any pipeline that emits a `ContentBundle` drives the same tools.
 - **Tools are introspectable by agents.** Each tool publishes `inputSchema`, `outputSchema`, `examples`, and `composes` via `tools list --json`. An external agent discovers and chains them via `run-pipeline`.
 - **Themes resolve deterministically and are reproducible.** The resolver hashes `bundle.id` to pick among candidates, persists the decision with the current `catalogVersion`, and re-resolves when the catalog bumps. Agents override via `choose-theme`.
-- **One publisher per file, uniform base class.** Adding a platform is: new file + one method + one line in `registry.ts`.
-- **Transcription runs once, cached on disk.** All variants share the same word timestamps.
-- **YouTube delegates to YouTubeCLI.** It already owns analytics and its own decision log; we shell out.
-- **Spotify is RSS, not API.** No per-episode endpoint for indies. We host a feed; platforms poll it.
-- **Video templates are plain HTML + GSAP, not React.** ~40% smaller output than Remotion at equivalent quality. An agent can write a new treatment in HTML + CSS.
-- **Decision log is JSONL + runId.** Append-only, greppable, rotates at 10 MiB. Every orchestrator run mints a UUID threaded into every decision it produces.
+- **One publisher per file, uniform base class.** Adding a platform is: new file + one method + one line in `registry.ts`. Keeps each platform's quirks isolated.
+- **Transcription runs once.** Whisper processes the MP3 and caches the JSON. All variants share the same word timestamps.
+- **YouTube is delegated to an external CLI.** Set `YOUTUBECLI_PATH` to any tool that accepts `run youtube_cli video upload --file ... --title ... --description ... --privacy ... [--tags ...]` and prints `videoId: <11 chars>` on stdout (see [`src/platforms/youtube.ts`](./src/platforms/youtube.ts) for the exact contract). If you don't have one, leave the env unset — YouTube will simply not appear as a target.
+- **Spotify is RSS, not API.** No per-episode publishing endpoint for indie podcasters; we host a feed and platforms poll it.
+- **Video templates are plain HTML + GSAP, not React.** This project originally used Remotion. We migrated to HyperFrames because an agent can write new mood templates in HTML+CSS+GSAP directly. Output is ~40% smaller at equivalent quality.
+- **Decision log is JSONL + runId.** Append-only, greppable, rotates at 10 MiB. Every `Orchestrator.publish()` call mints a UUID threaded into every decision it produces.
 
 ## Costs
 
@@ -318,10 +336,25 @@ Shipping (751 unit + integration tests):
 Intentionally not shipping yet:
 - Additional mood templates — `fantasia` covers all moods via fallback. Authoring the other six is deferred by product decision.
 - Engagement ingestion from YouTubeCLI + Postiz back into the decision log (future feedback loop).
+- Automated clip selection ("post the best 30s of a 5min cuento"). Stories run at narration pace on purpose — this is a book, not a song.
+- Automatic upload of the Spotify RSS feed + MP3s to R2. `rss` builds `feed.xml`; operator handles the upload.
+
+## How this compares
+
+| Need | Use this |
+|---|---|
+| I have a podcast RSS feed and want auto-posted clips on every episode with 10+ template options | [Headliner](https://www.headliner.app/) |
+| I want to turn long video into viral short-form | [Opus Clip](https://www.opus.pro/), [Submagic](https://submagic.co/) |
+| I want a polished text-edit-driven audiogram maker | [Descript](https://www.descript.com/tools/audiogram-maker) |
+| I have a local MP3-first pipeline and want a cron-driven, self-hosted, multi-platform publisher with an LLM-legible decision log | this repo |
+
+## Origin
+
+Extracted from the [AudioKids](https://audiokids.org) toolchain — a Spanish-language AI audio-story publisher that generates a daily cuento and ships it across every relevant social surface — and open-sourced because the reliability scaffolding around multi-platform publishing (retry, idempotency, alerts, caption moderation, whisper-crash hard-stop, decision log) is generic enough to stand alone. AudioKids is the first consumer of this repo; it is not the only one it can serve.
 
 ## License
 
-Internal to the DjinnFoundry / AudioKids toolkit.
+[MIT](./LICENSE). Use freely; attribution appreciated. Originally built for [AudioKids](https://audiokids.org) and open-sourced from that codebase.
 
 ---
 
