@@ -1,10 +1,11 @@
+import { classifyError } from '../core/errors.js';
+
 /**
  * Retry with exponential backoff and jitter.
  *
  * Defaults:
  *   attempts = 3, baseMs = 2000, delay = baseMs * 2^(attempt-1) ± 25% jitter.
- *   isRetryable = treat network errors and HTTP 5xx as transient; HTTP 4xx as
- *   permanent (no retry).
+ *   isRetryable = delegated to classifyError (central taxonomy in core/errors.ts).
  *
  * The function returns the resolved value on the first successful attempt or
  * throws the last error after `attempts` failures / a non-retryable error.
@@ -25,20 +26,12 @@ export interface RetryOptions {
 const DEFAULT_ATTEMPTS = 3;
 const DEFAULT_BASE_MS = 2000;
 
-const NETWORK_CODES = new Set(['ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN', 'ECONNREFUSED', 'ENETUNREACH', 'EPIPE']);
-
+/**
+ * Decide if a thrown error looks retryable. Thin wrapper over classifyError so
+ * existing callers keep the same shape; the taxonomy lives in core/errors.ts.
+ */
 export function isTransientError(err: unknown): boolean {
-  if (!err) return false;
-  const anyErr = err as { code?: string; message?: string };
-  if (anyErr.code && NETWORK_CODES.has(anyErr.code)) return true;
-  const msg = anyErr.message ?? String(err);
-  // Detect 4xx explicitly → NOT retryable
-  if (/\b4\d{2}\b/.test(msg)) return false;
-  // Detect 5xx or the word '5' in a status-style context → retryable
-  if (/\b5\d{2}\b/.test(msg)) return true;
-  // Generic network-error shape in fetch: "fetch failed" / "network error"
-  if (/network|socket hang up|timeout|temporarily unavailable/i.test(msg)) return true;
-  return false;
+  return classifyError(err).retryable;
 }
 
 export async function retry<T>(fn: () => Promise<T>, opts: RetryOptions = {}): Promise<T> {

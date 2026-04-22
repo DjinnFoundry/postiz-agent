@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "treatments": [
+    {
+      "id": "hero-display",
+      "family": "editorial",
+      "palettes": ["parchment-ember", "cream-rust", "bone-ink"],
+      "fontPairing": "fraunces-inter",
+      "layoutHints": { "titleSize": 180, "kickerStyle": "uppercase-spaced", "showFolio": false },
+      "description": "Opener dominated by a huge title and small kicker. Minimal body. For emocionante / story intros."
+    },
+    {
+      "id": "midnight",
+      "family": "editorial",
+      "palettes": ["midnight-gold", "deep-ocean", "coal-ember"],
+      "fontPairing": "playfair-inter",
+      "layoutHints": { "titleSize": 140, "kickerStyle": "uppercase-spaced", "background": "dark", "showFolio": true },
+      "description": "Dark editorial with luminous accent. Suits misterio, nocturno, suspense."
+    },
+    {
+      "id": "rose-stamp",
+      "family": "editorial",
+      "palettes": ["rose-cream", "coral-blush", "peach-sand"],
+      "fontPairing": "fraunces-inter",
+      "layoutHints": { "titleSize": 150, "stamp": { "rotate": true, "text": "AUDIOCUENTO · HECHO CON CARIÑO ·" }, "showFolio": false },
+      "description": "Pink-cream palette with a rotating circular stamp. For dedications and named-child stories."
+    },
+    {
+      "id": "academic-dropcap",
+      "family": "editorial",
+      "palettes": ["parchment-ember", "ivory-sepia", "cream-forest"],
+      "fontPairing": "cormorant-garamond",
+      "layoutHints": { "dropCap": { "size": 240, "lines": 4 }, "textAlign": "justify", "folioStyle": "classic", "showFolio": true },
+      "description": "Classic book: giant drop cap, justified body. For literary fantasia and calm storytelling."
+    },
+    {
+      "id": "big-stat",
+      "family": "editorial",
+      "palettes": ["parchment-ember", "midnight-gold", "terminal-green"],
+      "fontPairing": "fraunces-inter",
+      "layoutHints": { "statSize": 400, "showFolio": false, "background": "neutral" },
+      "description": "Closing spread with a huge numeric/data protagonist. Good for lessons-with-a-number."
+    },
+    {
+      "id": "storybook-pop",
+      "family": "infantil",
+      "palettes": ["pop-cherry", "pop-mint", "pop-sunflower"],
+      "fontPairing": "baloo-nunito",
+      "layoutHints": { "titleSize": 160, "outlineStroke": 6, "showFolio": false, "bounce": true },
+      "description": "Saturated comic-book vibe. Outlined title, rounded containers. For comedia and young ages."
+    },
+    {
+      "id": "crayon-doodle",
+      "family": "infantil",
+      "palettes": ["pop-sunflower", "coral-blush", "bubble-peach"],
+      "fontPairing": "caveat-patrick",
+      "layoutHints": { "titleSize": 150, "handDrawnUnderlines": true, "showFolio": true, "folioStyle": "doodle" },
+      "description": "Hand-drawn notebook feel. Great for personal dedications, one-offs, young-child messages."
+    },
+    {
+      "id": "bubble-pastel",
+      "family": "infantil",
+      "palettes": ["bubble-lavender", "bubble-mint", "bubble-peach"],
+      "fontPairing": "quicksand-nunito",
+      "layoutHints": { "titleSize": 140, "bubbles": true, "showFolio": false, "roundCorners": 48 },
+      "description": "Soft pastel bubbles, no bold. For calma and bedtime stories."
+    },
+    {
+      "id": "medieval-manuscript",
+      "family": "epica",
+      "palettes": ["manuscript-gold", "parchment-burgundy", "vellum-ink"],
+      "fontPairing": "unifraktur-lora",
+      "layoutHints": { "illuminatedCap": { "size": 300, "border": true }, "marginDecorations": true, "folioStyle": "medieval", "showFolio": true },
+      "description": "Illuminated manuscript with ornamented drop caps and gold borders. For classic fantasy."
+    },
+    {
+      "id": "epic-cinematic",
+      "family": "epica",
+      "palettes": ["cinema-amber", "bronze-dusk", "cold-steel"],
+      "fontPairing": "cinzel-lato",
+      "layoutHints": { "titleSize": 160, "letterbox": true, "uppercase": true, "trackingPx": 12, "showFolio": false },
+      "description": "Widescreen letterboxing, Roman capitals, monumental tone. For aventura épica."
+    },
+    {
+      "id": "mythic-scroll",
+      "family": "epica",
+      "palettes": ["papyrus-sepia", "scroll-rose", "vellum-teal"],
+      "fontPairing": "tangerine-cormorant",
+      "layoutHints": { "scrollBorders": true, "titleSize": 200, "textAlign": "center", "showFolio": true, "folioStyle": "ornate" },
+      "description": "Calligraphic papyrus with ornate borders. For mythology, ancient morals, naturaleza with timeless tone."
+    },
+    {
+      "id": "terminal-crt",
+      "family": "tech",
+      "palettes": ["terminal-green", "terminal-amber", "terminal-cyan"],
+      "fontPairing": "jetbrains-space",
+      "layoutHints": { "scanLines": true, "cursorBlink": true, "prompt": "> ", "folioStyle": "bracket", "showFolio": true, "titleSize": 120 },
+      "description": "Retro CRT terminal. Monospace, prompt prefix, scan lines. For sci-fi, robots, digital adventures."
+    }
+  ],
+  "moodCandidates": {
+    "aventura":    ["epic-cinematic", "medieval-manuscript", "hero-display"],
+    "calma":       ["bubble-pastel", "academic-dropcap", "mythic-scroll"],
+    "comedia":     ["storybook-pop", "crayon-doodle", "bubble-pastel"],
+    "misterio":    ["midnight", "terminal-crt", "rose-stamp"],
+    "emocionante": ["hero-display", "big-stat", "epic-cinematic"],
+    "fantasia":    ["medieval-manuscript", "mythic-scroll", "academic-dropcap"],
+    "naturaleza":  ["mythic-scroll", "bubble-pastel", "academic-dropcap"]
+  },
+  "keywordHints": {
+    "bosque":   ["mythic-scroll", "academic-dropcap"],
+    "mar":      ["hero-display", "mythic-scroll"],
+    "castillo": ["medieval-manuscript", "epic-cinematic"],
+    "dragon":   ["medieval-manuscript", "epic-cinematic"],
+    "robot":    ["terminal-crt"],
+    "espacio":  ["midnight", "terminal-crt"],
+    "noche":    ["midnight"],
+    "luna":     ["midnight", "bubble-pastel"],
+    "princesa": ["rose-stamp", "medieval-manuscript"],
+    "fiesta":   ["storybook-pop"],
+    "amigo":    ["crayon-doodle", "storybook-pop"],
+    "magia":    ["mythic-scroll", "medieval-manuscript"]
+  },
+  "fallback": "hero-display"
+}

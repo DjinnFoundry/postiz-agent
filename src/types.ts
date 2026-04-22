@@ -79,14 +79,10 @@ export const VARIANTS: Record<Platform, VariantSpec | null> = {
   spotify:  null,
 };
 
-export interface StoryAssets {
-  slug: string;
-  audioMp3Path: string;
-  coverPngPath: string;
-  metadata: Story;
-}
-
 export type CaptionStatus = 'ok' | 'skipped' | 'failed';
+
+/** Kept in sync with src/core/errors.ts ErrorKind. Duplicated here to avoid a core→types loop. */
+export type ErrorClassName = 'transient' | 'permanent' | 'needs-config' | 'needs-human' | 'unknown';
 
 export interface PublishResult {
   platform: Platform;
@@ -94,6 +90,12 @@ export interface PublishResult {
   postId?: string;
   url?: string;
   error?: string;
+  /** Classified error kind when success=false. Drives retry/backoff/dispatch gating. */
+  errorClass?: ErrorClassName;
+  /** Machine-readable remediation hint attached by the error classifier. */
+  remediation?: { action: string; humanHint: string; args?: Record<string, unknown> };
+  /** Id of the CTA variant used in the caption. Set when D.2 rotator picked one. */
+  ctaVariant?: string;
   timestamp: string;
   /** If true, the platform was skipped (already published, or --dry-run short-circuit). */
   skipped?: boolean;

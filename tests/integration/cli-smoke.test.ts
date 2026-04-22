@@ -98,3 +98,36 @@ describe('CLI smoke: publish rejects malformed slugs', () => {
     expect(stderr + runCli(['publish', '--slug', '../../etc/passwd', '--platforms', 'tiktok', '--dry-run']).stdout).toMatch(/Invalid slug|must match/);
   });
 });
+
+describe('CLI smoke: tools list --json', () => {
+  it('returns an array of tool descriptors with JSON schemas', () => {
+    const { stdout, status } = runCli(['tools', 'list', '--json']);
+    expect(status).toBe(0);
+    const descriptors = JSON.parse(stdout);
+    expect(Array.isArray(descriptors)).toBe(true);
+    const names = descriptors.map((d: { name: string }) => d.name).sort();
+    expect(names).toEqual(expect.arrayContaining(['transcribe', 'moderate-captions', 'render-slide-video']));
+    for (const d of descriptors) {
+      expect(d).toHaveProperty('description');
+      expect((d as { inputSchema: { type?: string } }).inputSchema.type).toBe('object');
+      expect((d as { outputSchema: { type?: string } }).outputSchema.type).toBe('object');
+    }
+  });
+});
+
+describe('CLI smoke: tools describe', () => {
+  it('prints full descriptor for a known tool', () => {
+    const { stdout, status } = runCli(['tools', 'describe', 'transcribe']);
+    expect(status).toBe(0);
+    const d = JSON.parse(stdout);
+    expect(d.name).toBe('transcribe');
+    expect(d.inputSchema).toHaveProperty('properties');
+    expect(d.outputSchema).toHaveProperty('properties');
+  });
+
+  it('exits non-zero for unknown tool', () => {
+    const { status, stderr } = runCli(['tools', 'describe', 'nope-tool']);
+    expect(status).not.toBe(0);
+    expect(stderr).toMatch(/unknown tool/);
+  });
+});

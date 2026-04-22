@@ -1,6 +1,7 @@
 import type { PublishContext } from './base.js';
 import { VideoPublisher } from './base.js';
 import { YoutubeAdapter } from './youtube.js';
+import { buildCaption } from '../copy/caption-builder.js';
 import type { Platform, PublishResult } from '../types.js';
 
 export class YoutubePublisher extends VideoPublisher {
@@ -8,16 +9,15 @@ export class YoutubePublisher extends VideoPublisher {
 
   constructor(private readonly adapter: YoutubeAdapter = new YoutubeAdapter()) { super(); }
 
-  // YouTube keeps the title off the video (no title card baked in) since YT shows it natively.
-  protected titleText(_ctx: PublishContext): string { return ''; }
-
   protected async upload(videoPath: string, ctx: PublishContext): Promise<Partial<PublishResult>> {
+    const title = ctx.bundle.text.title ?? ctx.bundle.id;
+    const mood = ctx.bundle.theme?.mood ?? 'cuento';
     const out = await this.adapter.upload({
       videoPath,
-      title: ctx.assets.metadata.titulo,
-      description: this.adapter.buildDescription(ctx.assets),
+      title,
+      description: buildCaption({ bundle: ctx.bundle, platform: this.platform }),
       privacy: 'unlisted',
-      tags: ['audiocuento', 'cuentos infantiles', ctx.assets.metadata.mood],
+      tags: ['audiocuento', 'cuentos infantiles', mood],
     });
     return { postId: out.videoId, url: out.url };
   }

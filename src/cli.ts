@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command, Option } from 'commander';
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Orchestrator } from './orchestrator.js';
 import { SpotifyRssBuilder } from './platforms/spotify-rss.js';
 import { DecisionLog } from './decisions/log.js';
@@ -9,6 +10,11 @@ import { config } from './config.js';
 import { run } from './lib/process.js';
 import { validateSlug } from './lib/slug.js';
 import { listCandidates, selectNextStory } from './dispatch.js';
+import { AudioKidsAdapter } from './adapters/audiokids.js';
+import { PipelineRunner, PipelineSpecSchema, type PipelineSpec } from './core/pipeline.js';
+import { createDefaultRegistry } from './tools/index.js';
+import { consoleLogger, silentLogger } from './core/tool.js';
+import { ContentBundleSchema } from './core/content-bundle.js';
 import { PlatformSchema, type Platform } from './types.js';
 
 const program = new Command();
@@ -168,19 +174,59 @@ program
   .option('-s, --slug <slug>', 'filter by story slug')
   .option('-p, --platform <platform>', 'filter by platform (x, tiktok, instagram, youtube, spotify)')
   .option('--pretty', 'pretty-print with 2-space indent', false)
+  .option('--stuck', 'list slugs currently blocked by repeated failures or active backoff', false)
+  .option('--reset-attempts <slug>', 'record a reset marker so <slug> is no longer considered stuck')
   .addHelpText('after', `
 Decisions are appended to data/decisions.jsonl on every publish or render. Each
-entry records: action, reason, storySlug, platform, result (post id / url / error),
-and createdAt. Useful for agent memory across runs — "did yesterday's tiktok
-post succeed?" is a single grep, not a re-check of a platform API.
+entry records: action, reason, storySlug, platform, result (post id / url / error
++ errorClass + remediation), and createdAt. Useful for agent memory across runs —
+"did yesterday's tiktok post succeed?" is a single grep, not a re-check of a
+platform API.
 
 Examples:
-  postiz-agent decisions                              # everything
-  postiz-agent decisions --slug dragon-marcos         # one story, every platform
-  postiz-agent decisions --platform x                 # all X history
+  postiz-agent decisions                                     # everything
+  postiz-agent decisions --slug dragon-marcos                # one story, every platform
+  postiz-agent decisions --platform x                        # all X history
+  postiz-agent decisions --stuck                             # what's blocked right now
+  postiz-agent decisions --reset-attempts dragon-marcos      # unstuck a slug after fixing it
 `)
-  .action((opts) => {
+  .action(async (opts) => {
     const log = new DecisionLog();
+
+    if (opts.resetAttempts) {
+      const slug = validateSlug(opts.resetAttempts);
+      const history = log.list({ storySlug: slug });
+      const platforms = new Set<Platform>(history.map(h => h.platform));
+      const ts = new Date().toISOString();
+      for (const platform of platforms) {
+        await log.record({
+          action: `reset-attempts.${platform}`,
+          storySlug: slug,
+          platform,
+          reason: 'manual reset via --reset-attempts',
+          result: {
+            platform,
+            success: true,
+            skipped: true,
+            reason: 'reset-attempts',
+            timestamp: ts,
+          },
+        });
+      }
+      console.log(JSON.stringify({ ok: true, resetSlug: slug, platforms: [...platforms] }));
+      return;
+    }
+
+    if (opts.stuck) {
+      const all = log.list({});
+      const platforms = (Object.values(PlatformSchema.enum)) as Platform[];
+      const { findStuckSlugs } = await import('./dispatch.js');
+      const stuck = findStuckSlugs(all, platforms);
+      if (opts.pretty) console.log(JSON.stringify(stuck, null, 2));
+      else process.stdout.write(JSON.stringify(stuck) + '\n');
+      return;
+    }
+
     const slug = opts.slug ? validateSlug(opts.slug) : undefined;
     const entries = log.list({ storySlug: slug, platform: opts.platform });
     if (opts.pretty) console.log(JSON.stringify(entries, null, 2));
@@ -397,6 +443,224 @@ async function binCheck(cmd: string, testArg: string, required: boolean): Promis
       required,
     };
   }
+}
+
+// ─────────────────────────── copy preview ───────────────────────────
+program
+  .command('copy')
+  .description('Copy utilities: preview the caption a publisher would produce for a bundle')
+  .addHelpText('after', `
+Examples:
+  postiz-agent copy preview --id dragon-marcos
+  postiz-agent copy preview --id dragon-marcos --platform instagram --json
+`);
+
+program.commands.find(c => c.name() === 'copy')!
+  .command('preview')
+  .description('Print the caption that would be posted for a given bundle + platform')
+  .option('--id <id>', 'ContentBundle id (AudioKids slug)')
+  .option('--bundle-file <path>', 'path to a bundle JSON')
+  .option('-p, --platform <platform>', 'which platform to preview (default: all)')
+  .option('--json', 'emit machine-readable JSON', false)
+  .action(async (opts: { id?: string; bundleFile?: string; platform?: string; json?: boolean }) => {
+    const { buildCaptionRich } = await import('./copy/caption-builder.js');
+    const bundle = resolveBundle(opts);
+    const platforms: Platform[] = opts.platform
+      ? [opts.platform as Platform]
+      : ['x', 'tiktok', 'instagram', 'youtube'];
+    const out: Record<string, unknown> = {};
+    for (const p of platforms) {
+      const rich = buildCaptionRich({ bundle, platform: p });
+      out[p] = {
+        caption: rich.caption,
+        length: rich.caption.length,
+        ctaVariantId: rich.ctaVariantId,
+        hashtags: rich.hashtags,
+      };
+    }
+    if (opts.json) {
+      process.stdout.write(JSON.stringify(out, null, 2) + '\n');
+    } else {
+      for (const [p, data] of Object.entries(out)) {
+        const rich = data as { caption: string; length: number; ctaVariantId: string | null };
+        console.log(`\n── ${p} (${rich.length} chars, cta=${rich.ctaVariantId ?? 'none'}) ──\n${rich.caption}\n`);
+      }
+    }
+  });
+
+// ─────────────────────────── logs ───────────────────────────
+program
+  .command('logs')
+  .description('Inspect captured render stderr from data/render-logs (written when a HyperFrames render/lint fails)')
+  .option('-s, --slug <slug>', 'filter by story slug')
+  .option('-p, --platform <platform>', 'filter by platform')
+  .option('--tail', 'show only the most recent matching log (default prints every match listing)', false)
+  .action((opts: { slug?: string; platform?: string; tail?: boolean }) => {
+    const logDir = join(config.paths.projectRoot, 'data', 'render-logs');
+    if (!existsSync(logDir)) {
+      console.log('no render logs yet');
+      return;
+    }
+    let files = readdirSync(logDir).filter(f => f.endsWith('.log'));
+    if (opts.slug) files = files.filter(f => f.startsWith(`${opts.slug}-`));
+    if (opts.platform) files = files.filter(f => f.includes(`-${opts.platform}-`));
+    files.sort();
+    if (!files.length) {
+      console.log('no matching render logs');
+      return;
+    }
+    if (opts.tail) {
+      const latest = files[files.length - 1];
+      console.log(`=== ${latest} ===\n${readFileSync(join(logDir, latest), 'utf-8')}`);
+      return;
+    }
+    for (const f of files) {
+      console.log(`${join(logDir, f)}`);
+    }
+  });
+
+// ─────────────────────────── tools ───────────────────────────
+const tools = program
+  .command('tools')
+  .description('Introspect and invoke individual tools (for agent consumption)');
+
+tools
+  .command('list')
+  .description('List every registered tool with its JSON schema and description')
+  .option('--json', 'emit machine-readable JSON only (no decoration)', false)
+  .action((opts: { json?: boolean }) => {
+    const registry = createDefaultRegistry();
+    const descriptors = registry.list();
+    if (opts.json) {
+      process.stdout.write(JSON.stringify(descriptors, null, 2) + '\n');
+      return;
+    }
+    console.log(`\n${descriptors.length} tools registered:\n`);
+    for (const d of descriptors) {
+      console.log(`  • ${d.name}`);
+      console.log(`      ${d.description}`);
+    }
+    console.log('\nCall one with:');
+    console.log('  postiz-agent tools call <name> --input <file.json>');
+    console.log('  postiz-agent tools describe <name>  (full JSON schemas)\n');
+  });
+
+tools
+  .command('describe')
+  .description('Print the full JSON schema for a single tool (input + output + description)')
+  .argument('<name>', 'tool name')
+  .action((name: string) => {
+    const registry = createDefaultRegistry();
+    if (!registry.has(name)) {
+      console.error(`unknown tool: ${name}. Available: ${registry.names().join(', ')}`);
+      process.exit(1);
+    }
+    const [descriptor] = registry.list().filter(d => d.name === name);
+    process.stdout.write(JSON.stringify(descriptor, null, 2) + '\n');
+  });
+
+tools
+  .command('call')
+  .description('Execute a single tool against a bundle. Bundle is loaded from the AudioKids adapter by --id, or fully passed via --bundle-file.')
+  .argument('<name>', 'tool name')
+  .option('--id <id>', 'ContentBundle id (e.g. an AudioKids story slug) to load via adapter')
+  .option('--bundle-file <path>', 'path to a JSON file with a complete ContentBundle (alternative to --id)')
+  .option('--input <path>', 'path to a JSON file with the tool arguments merged into the input', '')
+  .option('--work-dir <path>', 'writable workspace for the tool', '')
+  .option('--dry-run', 'hint to the tool not to perform side effects', false)
+  .option('--quiet', 'silence the tool logger', false)
+  .option('--json', 'emit machine-readable JSON only (stdout stays clean)', false)
+  .action(async (name: string, opts: {
+    id?: string; bundleFile?: string; input?: string; workDir?: string; dryRun?: boolean; quiet?: boolean; json?: boolean;
+  }) => {
+    const registry = createDefaultRegistry();
+    if (!registry.has(name)) {
+      console.error(`unknown tool: ${name}. Available: ${registry.names().join(', ')}`);
+      process.exit(1);
+    }
+    const bundle = resolveBundle(opts);
+    const workDir = opts.workDir?.trim() || join(config.paths.tmpDir, bundle.id);
+    const args = opts.input ? JSON.parse(readFileSync(opts.input, 'utf-8')) : {};
+
+    const tool = registry.get(name);
+    const rawInput = { ...args, bundle, workDir, dryRun: opts.dryRun };
+    const parsed = tool.inputSchema.safeParse(rawInput);
+    if (!parsed.success) {
+      console.error(`input validation failed for "${name}": ${parsed.error.message}`);
+      process.exit(1);
+    }
+    const ctx = {
+      bundle,
+      workDir,
+      state: {} as Record<string, unknown>,
+      dryRun: opts.dryRun,
+      logger: opts.quiet || opts.json ? silentLogger : consoleLogger,
+    };
+    if (tool.preflight) {
+      const pre = await tool.preflight(parsed.data, ctx);
+      if (!pre.ok) {
+        const skipped = { ok: false, skipped: true, reason: pre.reason };
+        process.stdout.write(JSON.stringify(skipped, null, 2) + '\n');
+        process.exit(0);
+      }
+    }
+    try {
+      const out = await tool.run(parsed.data, ctx);
+      tool.outputSchema.parse(out);
+      process.stdout.write(JSON.stringify({ ok: true, output: out }, null, 2) + '\n');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stdout.write(JSON.stringify({ ok: false, error: msg }, null, 2) + '\n');
+      process.exit(1);
+    }
+  });
+
+// ─────────────────────────── pipeline ───────────────────────────
+program
+  .command('run-pipeline')
+  .description('Run a declarative pipeline (JSON spec) against a bundle')
+  .argument('<spec>', 'path to the pipeline JSON spec')
+  .option('--id <id>', 'ContentBundle id (AudioKids slug) to load via adapter')
+  .option('--bundle-file <path>', 'path to a JSON file with a complete ContentBundle')
+  .option('--work-dir <path>', 'writable workspace for the pipeline', '')
+  .option('--dry-run', 'hint to every step not to perform side effects', false)
+  .option('--json', 'emit the run result as JSON on stdout (logger silenced)', false)
+  .action(async (specPath: string, opts: {
+    id?: string; bundleFile?: string; workDir?: string; dryRun?: boolean; json?: boolean;
+  }) => {
+    if (!existsSync(specPath)) {
+      console.error(`pipeline spec not found: ${specPath}`);
+      process.exit(1);
+    }
+    const raw = JSON.parse(readFileSync(specPath, 'utf-8'));
+    const spec: PipelineSpec = PipelineSpecSchema.parse(raw);
+    const bundle = resolveBundle(opts);
+    const workDir = opts.workDir?.trim() || join(config.paths.tmpDir, bundle.id);
+    const runner = new PipelineRunner(createDefaultRegistry());
+    const result = await runner.run(spec, bundle, {
+      workDir,
+      dryRun: opts.dryRun,
+      logger: opts.json ? silentLogger : consoleLogger,
+    });
+    if (opts.json) {
+      process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+    } else {
+      console.log(`\npipeline ${spec.name} → ${result.ok ? 'OK' : 'FAILED'}`);
+      for (const step of result.results) {
+        const tag = step.skipped ? `skipped (${step.skipped.reason})` : step.ok ? 'ok' : `failed: ${step.error}`;
+        console.log(`  ${step.tool}: ${tag} [${step.durationMs}ms]`);
+      }
+    }
+    if (!result.ok) process.exit(1);
+  });
+
+function resolveBundle(opts: { id?: string; bundleFile?: string }) {
+  if (opts.bundleFile) {
+    if (!existsSync(opts.bundleFile)) throw new Error(`bundle file not found: ${opts.bundleFile}`);
+    return ContentBundleSchema.parse(JSON.parse(readFileSync(opts.bundleFile, 'utf-8')));
+  }
+  if (!opts.id) throw new Error('pass --id <slug> or --bundle-file <path> to resolve a ContentBundle');
+  return new AudioKidsAdapter().loadBundle(opts.id);
 }
 
 program.parseAsync(process.argv).catch(err => {

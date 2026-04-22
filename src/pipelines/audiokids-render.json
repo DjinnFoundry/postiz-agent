@@ -1,0 +1,21 @@
+{
+  "name": "audiokids-render",
+  "version": "1.0.0",
+  "description": "Transcribe an AudioKids bundle, moderate the transcript, and render one slide video per requested platform. Does NOT publish; publishing is handled separately by the orchestrator. Use this pipeline when you only want the rendered MP4s (dry-run, preview, gallery generation).",
+  "steps": [
+    {
+      "tool": "transcribe",
+      "note": "word-level whisper, cached to tmp/"
+    },
+    {
+      "tool": "moderate-captions",
+      "note": "Spanish blocklist over transcript; non-fatal",
+      "optional": true
+    },
+    {
+      "tool": "render-slide-video",
+      "note": "caller must pass { platform } via args",
+      "optional": false
+    }
+  ]
+}

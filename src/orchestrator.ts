@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { config } from './config.js';
-import { AudioKidsReader } from './audiokids/reader.js';
+import { AudioKidsAdapter } from './adapters/audiokids.js';
 import { SubtitleGenerator } from './media/subtitles.js';
 import { getPublisher } from './platforms/registry.js';
 import type { PlatformPublisher, PublishContext } from './platforms/base.js';
@@ -10,6 +10,10 @@ import { retry, isTransientError } from './lib/retry.js';
 import { notifyFailure } from './lib/alerts.js';
 import { wasRecentlyPublished } from './idempotency.js';
 import { moderateWords } from './media/caption-moderation.js';
+import type { ContentBundle } from './core/content-bundle.js';
+import { classifyError } from './core/errors.js';
+import { preflightPlatform } from './core/preflight.js';
+import { platformOrigin } from './platforms/base.js';
 import type { CaptionStatus, Platform, PublishResult, WordEntry } from './types.js';
 
 export interface PublishOptions {
@@ -31,23 +35,23 @@ export interface PublishReport {
 }
 
 /**
- * End-to-end pipeline: AudioKids story → all requested platforms.
- * - Reads story assets from AudioKids output
- * - Transcribes audio once (whisper word-level) and reuses across publishers
- * - Applies caption moderation to the word list before rendering
- * - Publishes platforms concurrently through the retry helper, with idempotency
- *   and alerting around each one
- * - Records every decision in a JSONL log for later analysis
+ * End-to-end pipeline: a ContentBundle → all requested platforms.
+ *
+ * Today the orchestrator loads bundles via the AudioKids adapter; future pipelines
+ * (a custom video pipeline, a data-driven post pipeline, etc.) will inject a different
+ * adapter without changing downstream code. Every tool from transcription onward
+ * consumes ContentBundle exclusively.
  */
 export class Orchestrator {
-  private readonly reader = new AudioKidsReader();
+  private readonly adapter = new AudioKidsAdapter();
   private readonly subs = new SubtitleGenerator();
   private readonly decisions = new DecisionLog();
 
   async publish(opts: PublishOptions): Promise<PublishReport> {
-    const assets = this.reader.readStory(opts.storySlug);
-    const m = assets.metadata;
-    console.log(`\nstory: "${m.titulo}" (${m.meta.wordCount} words, ${m.meta.estimatedDurationMin}min)`);
+    const bundle = this.adapter.loadBundle(opts.storySlug);
+    const wordCount = (bundle.sourceMeta?.wordCount as number | undefined) ?? 0;
+    const durationMin = (bundle.sourceMeta?.estimatedDurationMin as number | undefined) ?? 0;
+    console.log(`\nstory: "${bundle.text.title ?? bundle.id}" (${wordCount} words, ${durationMin}min)`);
 
     const workDir = join(config.paths.tmpDir, opts.storySlug);
     mkdirSync(workDir, { recursive: true });
@@ -59,8 +63,11 @@ export class Orchestrator {
 
     if (opts.skipTranscription) {
       captionStatus = 'skipped';
+    } else if (!bundle.primaryMedia) {
+      captionStatus = 'skipped';
+      baseWarnings.push('no primary media to transcribe');
     } else {
-      const t = await this.tryTranscribe(assets.audioMp3Path, workDir, m.meta.locale);
+      const t = await this.tryTranscribe(bundle.primaryMedia, workDir, bundle.locale);
       if (t.ok) {
         words = t.words;
         captionStatus = 'ok';
@@ -86,7 +93,7 @@ export class Orchestrator {
     // guarantees every platform is recorded even if one explodes. The decisions
     // log uses async atomic appends, safe under concurrent writers.
     const settled = await Promise.allSettled(
-      opts.platforms.map(platform => this.publishPlatform(platform, opts, { assets, workDir, words, dryRun: opts.dryRun }, captionStatus, baseWarnings)),
+      opts.platforms.map(platform => this.publishPlatform(platform, opts, { bundle, workDir, words, dryRun: opts.dryRun }, captionStatus, baseWarnings)),
     );
 
     const results: PublishResult[] = settled.map((s, i) => {
@@ -107,6 +114,35 @@ export class Orchestrator {
     baseWarnings: string[],
   ): Promise<PublishResult> {
     console.log(`→ ${platform}: starting`);
+
+    // Preflight: refuse early if this platform can't accept this bundle. Saves
+    // 2-3 minutes of render time when the audio is too long, cover is missing,
+    // or the target is spotify (RSS-only).
+    const pre = await preflightPlatform(ctx.bundle, platform);
+    if (!pre.ok) {
+      const success = pre.kind === 'skip';
+      const ts = new Date().toISOString();
+      const result: PublishResult = {
+        platform,
+        success,
+        skipped: true,
+        reason: pre.reason,
+        timestamp: ts,
+        captionStatus,
+        ...(pre.kind !== 'skip' ? { errorClass: pre.kind, error: pre.reason } : {}),
+        ...(pre.hint ? { remediation: { action: 'preflight-fix', humanHint: pre.hint } } : {}),
+        warnings: baseWarnings.length ? [...baseWarnings] : undefined,
+      };
+      await this.decisions.record({
+        action: `publish.${platform}.preflight`,
+        storySlug: opts.storySlug,
+        platform,
+        reason: opts.reason ?? 'scheduled daily publication',
+        result,
+      });
+      console.log(`  ${platform} preflight: ${pre.reason}`);
+      return result;
+    }
 
     // Idempotency: skip if we already successfully published in the last 24h.
     if (!opts.force && !opts.dryRun) {
@@ -195,17 +231,19 @@ export class Orchestrator {
         },
       });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const classified = classifyError(err, { origin: platformOrigin(publisher.platform) });
       // Fire-and-forget alert after retries exhausted.
       void notifyFailure(
-        { slug: ctx.assets.slug, platform: publisher.platform, error: msg, attempts: attemptsSeen },
+        { slug: ctx.bundle.id, platform: publisher.platform, error: classified.message, attempts: attemptsSeen },
         config.alerts?.webhookUrl || undefined,
       );
       if (lastResult) return lastResult;
       return {
         platform: publisher.platform,
         success: false,
-        error: msg,
+        error: classified.message,
+        errorClass: classified.kind,
+        ...(classified.remediation ? { remediation: classified.remediation } : {}),
         timestamp: new Date().toISOString(),
       };
     }
@@ -236,3 +274,5 @@ function mergeWarnings(a?: string[], b?: string[]): string[] | undefined {
   const merged = [...(a ?? []), ...(b ?? [])];
   return merged.length ? merged : undefined;
 }
+
+export type { ContentBundle };

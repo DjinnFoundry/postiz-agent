@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "palettes": [
+    { "id": "parchment-ember",   "bg": "#F1E8D8", "ink": "#2B1B0F", "accent": "#C17B38", "muted": "#8B6F4F", "highlight": "#E8B84A" },
+    { "id": "cream-rust",        "bg": "#F5ECDB", "ink": "#2A1506", "accent": "#9B3D20", "muted": "#8C6F53", "highlight": "#D97A4C" },
+    { "id": "bone-ink",          "bg": "#EDE7DA", "ink": "#111111", "accent": "#333333", "muted": "#6B6B6B", "highlight": "#B09B7D" },
+    { "id": "ivory-sepia",       "bg": "#F8F3E6", "ink": "#3B2516", "accent": "#8A5A2B", "muted": "#7A6550", "highlight": "#C89A5B" },
+    { "id": "cream-forest",      "bg": "#F4EEDE", "ink": "#1E3224", "accent": "#4A7C56", "muted": "#7B8674", "highlight": "#BFA868" },
+
+    { "id": "midnight-gold",     "bg": "#0E1320", "ink": "#F4EAD5", "accent": "#E8B84A", "muted": "#7A8296", "highlight": "#F8D27E" },
+    { "id": "deep-ocean",        "bg": "#0B1A2E", "ink": "#E6F0FA", "accent": "#4FB3D9", "muted": "#5C7691", "highlight": "#B8E1F5" },
+    { "id": "coal-ember",        "bg": "#161616", "ink": "#F5E8D0", "accent": "#E8763C", "muted": "#7E7367", "highlight": "#F5B06B" },
+
+    { "id": "rose-cream",        "bg": "#FADFD3", "ink": "#4A1220", "accent": "#C44569", "muted": "#B68E85", "highlight": "#F7A1B4" },
+    { "id": "coral-blush",       "bg": "#FFE5D9", "ink": "#4B1C1C", "accent": "#E76F51", "muted": "#B88680", "highlight": "#F4A261" },
+    { "id": "peach-sand",        "bg": "#FBE7C6", "ink": "#44281C", "accent": "#D67D3E", "muted": "#A98B66", "highlight": "#F4B26A" },
+
+    { "id": "pop-cherry",        "bg": "#FFF2E6", "ink": "#3A0F12", "accent": "#E63946", "muted": "#C08086", "highlight": "#FFC72C" },
+    { "id": "pop-mint",          "bg": "#E6FFF5", "ink": "#0B3A2E", "accent": "#1FB584", "muted": "#6AA798", "highlight": "#FFD260" },
+    { "id": "pop-sunflower",     "bg": "#FFF7D6", "ink": "#3C2A08", "accent": "#FFB400", "muted": "#B8A266", "highlight": "#FF6B6B" },
+
+    { "id": "bubble-lavender",   "bg": "#EDE4FB", "ink": "#2E1B5C", "accent": "#A98EE0", "muted": "#8A7EB5", "highlight": "#FFD6E8" },
+    { "id": "bubble-mint",       "bg": "#DFF5EE", "ink": "#0F3A2E", "accent": "#6FC9AC", "muted": "#8CAFA3", "highlight": "#FFE7B8" },
+    { "id": "bubble-peach",      "bg": "#FFE6D9", "ink": "#442316", "accent": "#F4976C", "muted": "#BA8F7A", "highlight": "#FFCFE1" },
+
+    { "id": "manuscript-gold",   "bg": "#F5E9C8", "ink": "#2A1606", "accent": "#B18A3C", "muted": "#8A6B42", "highlight": "#DDB25E" },
+    { "id": "parchment-burgundy","bg": "#F1E4C3", "ink": "#4A0E13", "accent": "#9A1B25", "muted": "#967853", "highlight": "#C69B3F" },
+    { "id": "vellum-ink",        "bg": "#EBDFC4", "ink": "#1B1508", "accent": "#4A3A22", "muted": "#6E5F47", "highlight": "#A88D55" },
+
+    { "id": "cinema-amber",      "bg": "#1A1410", "ink": "#F0E2C8", "accent": "#E8A93B", "muted": "#8C7E65", "highlight": "#FFD37A" },
+    { "id": "bronze-dusk",       "bg": "#1D1512", "ink": "#EBD8B9", "accent": "#B77736", "muted": "#7F6B54", "highlight": "#E5B178" },
+    { "id": "cold-steel",        "bg": "#15181F", "ink": "#DCE4F0", "accent": "#6DA1C8", "muted": "#73808F", "highlight": "#B2CCE4" },
+
+    { "id": "papyrus-sepia",     "bg": "#F0E4C1", "ink": "#382418", "accent": "#8A5A2D", "muted": "#8B7552", "highlight": "#C89553" },
+    { "id": "scroll-rose",       "bg": "#F5E2D8", "ink": "#3E1E1C", "accent": "#B64E56", "muted": "#A78678", "highlight": "#E09A7C" },
+    { "id": "vellum-teal",       "bg": "#EAE4C6", "ink": "#0F2F36", "accent": "#3B8F8E", "muted": "#7E8A7F", "highlight": "#D4B067" },
+
+    { "id": "terminal-green",    "bg": "#04110A", "ink": "#6BFFA5", "accent": "#39FF6B", "muted": "#3A7E58", "highlight": "#C1FFD9" },
+    { "id": "terminal-amber",    "bg": "#0C0A05", "ink": "#FFCC70", "accent": "#FFB020", "muted": "#86724A", "highlight": "#FFE0A5" },
+    { "id": "terminal-cyan",     "bg": "#040D14", "ink": "#90E0FF", "accent": "#3CC6FF", "muted": "#4E7A93", "highlight": "#D4F0FF" }
+  ]
+}

@@ -1,6 +1,7 @@
 import { readFileSync, statSync } from 'node:fs';
 import { basename } from 'node:path';
 import { config, assertPostizConfigured } from '../config.js';
+import { UploadCache, computeUploadTimeoutMs } from '../lib/upload-cache.js';
 import type { Platform } from '../types.js';
 
 // Postiz uses these identifiers in its `integration` field when creating posts.
@@ -12,6 +13,8 @@ const POSTIZ_PROVIDER_KEY: Record<Platform, string | null> = {
   youtube: 'youtube',
   spotify: null,
 };
+
+const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 
 export interface PostizMediaUpload {
   id: string;
@@ -45,11 +48,17 @@ export class PostizClient {
   constructor(
     private readonly apiUrl: string = config.postiz.apiUrl,
     private readonly apiKey: string = config.postiz.apiKey,
+    private readonly uploadCache: UploadCache = new UploadCache(),
   ) {
     assertPostizConfigured();
   }
 
-  private async request<T>(method: string, path: string, body?: unknown, contentType = 'application/json'): Promise<T> {
+  private async request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    opts: { contentType?: string; timeoutMs?: number } = {},
+  ): Promise<T> {
     const headers: Record<string, string> = {
       'Authorization': this.apiKey,
     };
@@ -57,14 +66,14 @@ export class PostizClient {
     if (body instanceof FormData) {
       payload = body;
     } else if (body !== undefined) {
-      headers['Content-Type'] = contentType;
+      headers['Content-Type'] = opts.contentType ?? 'application/json';
       payload = JSON.stringify(body);
     }
     const res = await fetch(`${this.apiUrl}${path}`, {
       method,
       headers,
       body: payload,
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(opts.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS),
     });
     const text = await res.text();
     if (!res.ok) {
@@ -87,22 +96,33 @@ export class PostizClient {
   }
 
   async uploadMedia(filePath: string): Promise<PostizMediaUpload> {
+    const sha256 = await this.uploadCache.hashFile(filePath);
+    const cached = this.uploadCache.get(sha256);
+    if (cached) {
+      console.log(`reused upload ${basename(filePath)} via sha256 cache → ${cached.mediaId}`);
+      return { id: cached.mediaId, path: cached.path ?? filePath };
+    }
+
     const buf = readFileSync(filePath);
     const name = basename(filePath);
     const stat = statSync(filePath);
+    const timeoutMs = computeUploadTimeoutMs(stat.size);
     const form = new FormData();
     const blob = new Blob([buf]);
     form.append('file', blob, name);
     const result = await this.request<{ id: string; path: string; url?: string }>(
-      'POST', '/upload', form,
+      'POST', '/upload', form, { timeoutMs },
     );
-    console.log(`uploaded ${name} (${stat.size}B) → ${result.id}`);
+    console.log(`uploaded ${name} (${stat.size}B, timeout=${timeoutMs}ms) → ${result.id}`);
+    this.uploadCache.set(sha256, { mediaId: result.id, path: result.path });
     return result;
   }
 
   async createPost(input: CreatePostInput): Promise<CreatePostResult> {
     const media: Array<{ id: string; path: string }> = [];
-    if (input.videoPath) media.push(await this.uploadMedia(input.videoPath));
+    if (input.videoPath) {
+      media.push(await this.uploadMedia(input.videoPath));
+    }
 
     const scheduledDate = input.scheduledDate ?? new Date().toISOString();
     const key = POSTIZ_PROVIDER_KEY[input.platform]!;

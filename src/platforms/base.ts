@@ -1,11 +1,13 @@
 import { join } from 'node:path';
 import { SlideVideoBuilder } from '../media/slide-video.js';
-import type { Platform, PublishResult, StoryAssets, WordEntry } from '../types.js';
+import type { ContentBundle } from '../core/content-bundle.js';
+import { classifyError, type ErrorOrigin } from '../core/errors.js';
+import type { Platform, PublishResult, WordEntry } from '../types.js';
 
 export type { WordEntry };
 
 export interface PublishContext {
-  assets: StoryAssets;
+  bundle: ContentBundle;
   workDir: string;
   /**
    * Word-level transcript, always computed once at the orchestrator level.
@@ -53,9 +55,16 @@ export abstract class VideoPublisher implements PlatformPublisher {
         ...(warnings.length ? { warnings: [...(result.warnings ?? []), ...warnings] } : {}),
       };
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`  ${this.platform} failed: ${msg}`);
-      return { platform: this.platform, success: false, error: msg, timestamp: ts };
+      const classified = classifyError(err, { origin: platformOrigin(this.platform) });
+      console.error(`  ${this.platform} failed (${classified.kind}/${classified.origin}): ${classified.message}`);
+      return {
+        platform: this.platform,
+        success: false,
+        error: classified.message,
+        errorClass: classified.kind,
+        ...(classified.remediation ? { remediation: classified.remediation } : {}),
+        timestamp: ts,
+      };
     }
   }
 
@@ -67,10 +76,10 @@ export abstract class VideoPublisher implements PlatformPublisher {
         `(which skips video generation entirely for slide-based publishers).`,
       );
     }
-    const videoPath = join(ctx.workDir, `${ctx.assets.slug}-${this.platform}.mp4`);
+    const videoPath = join(ctx.workDir, `${ctx.bundle.id}-${this.platform}.mp4`);
     const result = await this.slides.build({
       platform: this.platform,
-      assets: ctx.assets,
+      bundle: ctx.bundle,
       outputPath: videoPath,
       words: ctx.words,
     });
@@ -78,4 +87,18 @@ export abstract class VideoPublisher implements PlatformPublisher {
   }
 
   protected abstract upload(videoPath: string, ctx: PublishContext): Promise<Partial<PublishResult>>;
+}
+
+/** Map a target platform to the ErrorOrigin hint our classifier understands. */
+export function platformOrigin(platform: Platform): ErrorOrigin {
+  switch (platform) {
+    case 'x':
+    case 'tiktok':
+    case 'instagram':
+      return 'postiz';
+    case 'youtube':
+      return 'youtube-cli';
+    default:
+      return 'unknown';
+  }
 }

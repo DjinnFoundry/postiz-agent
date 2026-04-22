@@ -1,7 +1,8 @@
 import { existsSync } from 'node:fs';
 import { config } from '../config.js';
 import { run } from '../lib/process.js';
-import type { StoryAssets } from '../types.js';
+import type { ContentBundle } from '../core/content-bundle.js';
+import { resolveTagline } from '../core/content-bundle.js';
 
 export interface YoutubeUploadInput {
   videoPath: string;
@@ -45,14 +46,20 @@ export class YoutubeAdapter {
     return { videoId: match[1], url: `https://www.youtube.com/watch?v=${match[1]}` };
   }
 
-  buildDescription(assets: StoryAssets): string {
-    const m = assets.metadata;
-    const vocab = m.vocabularioNuevo?.length ? `\n\nVocabulario nuevo: ${m.vocabularioNuevo.join(', ')}` : '';
+  buildDescription(bundle: ContentBundle): string {
+    const mood = bundle.theme?.mood ?? 'cuento';
+    const tagline = resolveTagline(bundle);
+    const forWhom = tagline ? `para ${tagline}` : 'hecho a medida';
+    const durationMin = (bundle.sourceMeta?.estimatedDurationMin as number | undefined) ?? null;
+    const vocab = Array.isArray(bundle.sourceMeta?.vocabularioNuevo) && (bundle.sourceMeta!.vocabularioNuevo as unknown[]).length
+      ? `\n\nVocabulario nuevo: ${(bundle.sourceMeta!.vocabularioNuevo as string[]).join(', ')}`
+      : '';
+    const durationLine = durationMin != null ? ` · Duración: ~${durationMin} min` : '';
     return (
-      `${m.contenido.slice(0, 300).trim()}...\n\n` +
-      `Un audiocuento de AudioKids para ${m.meta.name} (${m.meta.age} años).\n` +
-      `Género: ${m.mood} · Duración: ~${m.meta.estimatedDurationMin} min${vocab}\n\n` +
-      `#audiocuentos #cuentosinfantiles #${m.mood}`
+      `${bundle.text.body.slice(0, 300).trim()}...\n\n` +
+      `Un audiocuento de AudioKids ${forWhom}.\n` +
+      `Género: ${mood}${durationLine}${vocab}\n\n` +
+      `#audiocuentos #cuentosinfantiles #${mood}`
     );
   }
 }

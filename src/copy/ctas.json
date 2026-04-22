@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "variants": {
+    "x": [
+      { "id": "x-try",      "text": "Genera el tuyo en audiokids.app" },
+      { "id": "x-gift",     "text": "¿Para tu peque? → audiokids.app" },
+      { "id": "x-minute",   "text": "Cuentos a medida en un minuto · audiokids.app" },
+      { "id": "x-kids",     "text": "Tus peques, protagonistas. audiokids.app" },
+      { "id": "x-link",     "text": "audiokids.app · un cuento único, cada día" }
+    ],
+    "tiktok": [
+      { "id": "tk-ask",     "text": "Tú pides, AudioKids escribe 🎧" },
+      { "id": "tk-about",   "text": "Un cuento con tu peque de protagonista 🎧" },
+      { "id": "tk-try",     "text": "Pruébalo en audiokids.app 🎧" },
+      { "id": "tk-minute",  "text": "En 1 minuto lo tienes. audiokids.app" },
+      { "id": "tk-love",    "text": "Hecho con cariño en audiokids.app ✨" },
+      { "id": "tk-gift",    "text": "El regalo favorito de los peques · audiokids.app" }
+    ],
+    "instagram": [
+      { "id": "ig-bio",     "text": "¿Quieres uno para tu peque? Link en bio ✨" },
+      { "id": "ig-made",    "text": "Hecho con AudioKids. Prueba el tuyo → link en bio" },
+      { "id": "ig-hero",    "text": "Convierte a tu peque en protagonista. Link en bio 🎧" },
+      { "id": "ig-night",   "text": "Cuentos de buenas noches, hechos a medida. Link en bio" },
+      { "id": "ig-share",   "text": "Comparte con otra familia · link en bio ✨" },
+      { "id": "ig-free",    "text": "Primer cuento gratis en AudioKids · link en bio" },
+      { "id": "ig-special", "text": "Un cuento único para un peque único. Link en bio 💫" }
+    ],
+    "youtube": [
+      { "id": "yt-try",     "text": "Genera un cuento para tu peque en audiokids.app" },
+      { "id": "yt-channel", "text": "Suscríbete para un cuento nuevo cada día · audiokids.app" },
+      { "id": "yt-about",   "text": "Aprende más en audiokids.app" },
+      { "id": "yt-share",   "text": "Si os ha gustado, compartidlo con otra familia · audiokids.app" },
+      { "id": "yt-made",    "text": "Este cuento fue hecho con AudioKids (audiokids.app)" }
+    ]
+  }
+}

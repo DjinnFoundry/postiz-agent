@@ -4,7 +4,9 @@ import { PostizVideoPublisher } from './postiz-video-publisher.js';
 import { PostizClient } from './postiz.js';
 import { probeDurationSec } from '../lib/ffprobe.js';
 import { splitIntoParts, type PartSpec } from './instagram-split.js';
-import type { Platform, PublishResult, StoryAssets } from '../types.js';
+import { classifyError } from '../core/errors.js';
+import { buildCaptionRich } from '../copy/caption-builder.js';
+import type { Platform, PublishResult } from '../types.js';
 
 /** Instagram Reels maximum video length (seconds). */
 const IG_REELS_MAX_SEC = 180;
@@ -31,12 +33,14 @@ export class InstagramPublisher extends PostizVideoPublisher {
 
   override async publish(ctx: PublishContext): Promise<PublishResult> {
     const ts = new Date().toISOString();
-    const duration = await this.probeDuration(ctx.assets.audioMp3Path);
+    const media = ctx.bundle.primaryMedia;
+    if (!media) return super.publish(ctx);
+    const duration = await this.probeDuration(media);
     if (duration <= IG_REELS_MAX_SEC) {
       return super.publish(ctx);
     }
 
-    const parts = splitIntoParts(duration, ctx.assets.metadata.beats ?? [], ctx.words ?? []);
+    const parts = splitIntoParts(duration, ctx.bundle.beats ?? [], ctx.words ?? []);
     if (parts.length <= 1) return super.publish(ctx);
 
     const startTs = Date.now();
@@ -58,11 +62,11 @@ export class InstagramPublisher extends PostizVideoPublisher {
 
   private async publishPart(ctx: PublishContext, part: PartSpec, startTs: number): Promise<PublishResult> {
     const ts = new Date().toISOString();
-    const videoPath = join(ctx.workDir, `${ctx.assets.slug}-${this.platform}-part${part.partIndex}.mp4`);
+    const videoPath = join(ctx.workDir, `${ctx.bundle.id}-${this.platform}-part${part.partIndex}.mp4`);
     try {
       const build = await this.slides.build({
         platform: this.platform,
-        assets: ctx.assets,
+        bundle: ctx.bundle,
         outputPath: videoPath,
         words: ctx.words,
         clipStartSec: part.clipStartSec,
@@ -84,10 +88,15 @@ export class InstagramPublisher extends PostizVideoPublisher {
       }
       const integration = await this.postiz.findIntegration(this.platform);
       const scheduledDate = new Date(startTs + (part.partIndex - 1) * PART_STAGGER_MINUTES * 60_000).toISOString();
+      const rich = buildCaptionRich({
+        bundle: ctx.bundle,
+        platform: this.platform,
+        part: { index: part.partIndex, total: part.partTotal },
+      });
       const posted = await this.postiz.createPost({
         platform: this.platform,
         integrationId: integration.id,
-        text: this.buildCaption(ctx.assets, part),
+        text: rich.caption,
         videoPath: build.outputPath,
         scheduledDate,
       });
@@ -96,18 +105,21 @@ export class InstagramPublisher extends PostizVideoPublisher {
         success: true,
         postId: posted.postId,
         url: posted.url,
+        ...(rich.ctaVariantId ? { ctaVariant: rich.ctaVariantId } : {}),
         timestamp: ts,
         partIndex: part.partIndex,
         partTotal: part.partTotal,
         ...warnings,
       };
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`  instagram part ${part.partIndex}/${part.partTotal} failed: ${msg}`);
+      const classified = classifyError(err, { origin: 'postiz' });
+      console.error(`  instagram part ${part.partIndex}/${part.partTotal} failed (${classified.kind}): ${classified.message}`);
       return {
         platform: this.platform,
         success: false,
-        error: msg,
+        error: classified.message,
+        errorClass: classified.kind,
+        ...(classified.remediation ? { remediation: classified.remediation } : {}),
         timestamp: ts,
         partIndex: part.partIndex,
         partTotal: part.partTotal,
@@ -115,9 +127,4 @@ export class InstagramPublisher extends PostizVideoPublisher {
     }
   }
 
-  protected buildCaption(assets: StoryAssets, part?: PartSpec): string {
-    const { titulo, mood, contenido } = assets.metadata;
-    const suffix = part ? ` · Parte ${part.partIndex} de ${part.partTotal}` : '';
-    return `"${titulo}"${suffix} · un audiocuento de AudioKids\n\n${contenido.slice(0, 160)}...\n\n#audiocuentos #${mood} #cuentosinfantiles`;
-  }
 }
