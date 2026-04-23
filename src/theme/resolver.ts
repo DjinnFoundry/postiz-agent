@@ -36,10 +36,11 @@ export function resolveTheme(bundle: ContentBundle, opts: ResolveOptions = {}): 
   const byTreatment = new Map(catalog.treatments.map(t => [t.id, t]));
   const byPalette = new Map(catalog.palettes.map(p => [p.id, p]));
   const byPairing = new Map(catalog.pairings.map(f => [f.id, f]));
+  const saveOpts = { catalogVersion: catalog.catalogVersion };
 
   // 1. Persisted decision
   const prior = store.get(bundle.id);
-  if (prior && byTreatment.has(prior.treatmentId)) {
+  if (prior && byTreatment.has(prior.treatmentId) && isPriorDecisionFresh(prior, catalog)) {
     return materialize(prior, byTreatment, byPalette, byPairing, catalog, bundle);
   }
 
@@ -53,7 +54,7 @@ export function resolveTheme(bundle: ContentBundle, opts: ResolveOptions = {}): 
       source: 'explicit',
       decidedAt: now().toISOString(),
     };
-    if (persist) store.set(decision);
+    if (persist) store.set(decision, saveOpts);
     return materialize(decision, byTreatment, byPalette, byPairing, catalog, bundle);
   }
 
@@ -64,7 +65,7 @@ export function resolveTheme(bundle: ContentBundle, opts: ResolveOptions = {}): 
     const decision: ThemeDecision = {
       bundleId: bundle.id, treatmentId, source: 'keywords', decidedAt: now().toISOString(),
     };
-    if (persist) store.set(decision);
+    if (persist) store.set(decision, saveOpts);
     return materialize(decision, byTreatment, byPalette, byPairing, catalog, bundle);
   }
 
@@ -75,7 +76,7 @@ export function resolveTheme(bundle: ContentBundle, opts: ResolveOptions = {}): 
     const decision: ThemeDecision = {
       bundleId: bundle.id, treatmentId, source: 'mood', decidedAt: now().toISOString(),
     };
-    if (persist) store.set(decision);
+    if (persist) store.set(decision, saveOpts);
     return materialize(decision, byTreatment, byPalette, byPairing, catalog, bundle);
   }
 
@@ -83,8 +84,16 @@ export function resolveTheme(bundle: ContentBundle, opts: ResolveOptions = {}): 
   const decision: ThemeDecision = {
     bundleId: bundle.id, treatmentId: catalog.fallback, source: 'fallback', decidedAt: now().toISOString(),
   };
-  if (persist) store.set(decision);
+  if (persist) store.set(decision, saveOpts);
   return materialize(decision, byTreatment, byPalette, byPairing, catalog, bundle);
+}
+
+/** A prior decision is fresh only when its stamped catalogVersion matches the
+ *  current catalog. Legacy decisions written before catalogVersion stamping are
+ *  treated as stale so the resolver re-computes them, matching the policy
+ *  reported by `postiz-agent themes check-decisions`. */
+function isPriorDecisionFresh(prior: ThemeDecision, catalog: ThemeCatalog): boolean {
+  return prior.catalogVersion === catalog.catalogVersion;
 }
 
 /** Inspect body text for catalog keyword hints; returns a candidate list or null.

@@ -32,6 +32,17 @@ export const moderateCaptionsTool: Tool<Input, Output> = {
   description: 'Filter the word-level transcript through a locale-specific blocklist. Input: words[]. Output: moderated words[] + replacements count.',
   inputSchema: InputSchema,
   outputSchema: OutputSchema,
+  composes: ['render-slide-video'],
+  examples: [
+    {
+      description: 'Replace blocklisted tokens with a safe substitute (default mode).',
+      input: { words: [{ text: 'hola', start: 0, end: 0.3 }, { text: 'mundo', start: 0.4, end: 0.8 }] },
+    },
+    {
+      description: 'Drop blocklisted tokens entirely instead of replacing them (shortens the caption timeline).',
+      input: { mode: 'drop', words: [{ text: 'ejemplo', start: 0, end: 0.5 }] },
+    },
+  ],
 
   async preflight(input) {
     if (!input.words?.length) return { ok: false, reason: 'no words to moderate (transcript empty)' };

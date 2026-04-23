@@ -21,7 +21,13 @@ export interface ThemeCatalog {
   moodCandidates: Record<string, string[]>;
   keywordHints: Record<string, string[]>;
   fallback: string;
+  catalogVersion: string;
 }
+
+export type ThemeDecisionStaleReason =
+  | 'version-mismatch'
+  | 'unknown-treatment-id'
+  | 'legacy-no-version';
 
 export interface ThemeDecision {
   bundleId: string;
@@ -31,9 +37,15 @@ export interface ThemeDecision {
   source: 'explicit' | 'agent' | 'mood' | 'keywords' | 'fallback';
   decidedAt: string;
   decidedBy?: string;
+  catalogVersion?: string;
 }
 
-/** Load and merge the three catalog files into a single, validated ThemeCatalog. */
+export interface StaleDecisionEntry {
+  bundleId: string;
+  decision: ThemeDecision;
+  reason: ThemeDecisionStaleReason;
+}
+
 export function loadCatalog(paths?: {
   palettes?: string; fonts?: string; treatments?: string;
 }): ThemeCatalog {
@@ -45,6 +57,8 @@ export function loadCatalog(paths?: {
   ThemeCatalogSchema.parse(fontsRaw);
   ThemeCatalogSchema.parse(treatmentsRaw);
 
+  const catalogVersion = `${treatmentsRaw.version}:${palettesRaw.version}:${fontsRaw.version}`;
+
   return {
     palettes: palettesRaw.palettes as Palette[],
     pairings: fontsRaw.pairings as FontPairing[],
@@ -52,14 +66,16 @@ export function loadCatalog(paths?: {
     moodCandidates: treatmentsRaw.moodCandidates ?? {},
     keywordHints: treatmentsRaw.keywordHints ?? {},
     fallback: treatmentsRaw.fallback ?? 'hero-display',
+    catalogVersion,
   };
 }
 
 /**
  * Persistent decision cache: once a bundle resolves to a theme, that choice is
  * written to data/theme-decisions.json and reused for every future render.
- * This is what makes the theme engine deterministic across runs and immune to
- * "the agent decided differently this time" drift.
+ * Each decision is stamped with the catalogVersion at write-time so that a
+ * bump to any of treatments.json / palettes.json / fonts.json invalidates the
+ * cache (the resolver re-resolves on next publish).
  */
 export class ThemeDecisionStore {
   constructor(private readonly path: string = DECISIONS_PATH) {}
@@ -74,9 +90,12 @@ export class ThemeDecisionStore {
     }
   }
 
-  set(decision: ThemeDecision): void {
+  set(decision: ThemeDecision, opts: { catalogVersion?: string } = {}): void {
     const current = this.readAll();
-    current[decision.bundleId] = decision;
+    const stamped: ThemeDecision = opts.catalogVersion
+      ? { ...decision, catalogVersion: opts.catalogVersion }
+      : decision;
+    current[stamped.bundleId] = stamped;
     this.writeAll(current);
   }
 
@@ -89,6 +108,34 @@ export class ThemeDecisionStore {
     if (!(bundleId in current)) return;
     delete current[bundleId];
     this.writeAll(current);
+  }
+
+  listStale(catalog: ThemeCatalog): StaleDecisionEntry[] {
+    const known = new Set(catalog.treatments.map(t => t.id));
+    const out: StaleDecisionEntry[] = [];
+    for (const [bundleId, decision] of Object.entries(this.readAll())) {
+      if (!known.has(decision.treatmentId)) {
+        out.push({ bundleId, decision, reason: 'unknown-treatment-id' });
+        continue;
+      }
+      if (decision.catalogVersion === undefined) {
+        out.push({ bundleId, decision, reason: 'legacy-no-version' });
+        continue;
+      }
+      if (decision.catalogVersion !== catalog.catalogVersion) {
+        out.push({ bundleId, decision, reason: 'version-mismatch' });
+      }
+    }
+    return out;
+  }
+
+  clearStale(catalog: ThemeCatalog): StaleDecisionEntry[] {
+    const stale = this.listStale(catalog);
+    if (stale.length === 0) return [];
+    const current = this.readAll();
+    for (const s of stale) delete current[s.bundleId];
+    this.writeAll(current);
+    return stale;
   }
 
   private readAll(): Record<string, ThemeDecision> {

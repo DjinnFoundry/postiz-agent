@@ -21,7 +21,7 @@ import { writeFileSync } from 'node:fs';
 import {
   HEAD_SEC, TAIL_SEC, buildPages, escHtml, emitWordColorTimeline,
   readStoryFromStdin, renderPartRibbon, resolveFontLinks,
-  renderCornerOrnaments, renderScrollBorders,
+  renderCornerOrnaments, renderScrollBorders, renderEndCard,
 } from './common.mjs';
 
 const MIN_BODY_PX = 32;
@@ -83,10 +83,11 @@ const pageBlocks = pages.map((p, i) => {
     const prefix = useMonoPrompt && j === 0 ? '<span class="prompt">&gt; </span>' : '';
     return `${prefix}<span class="w" data-word="${j}">${rendered}</span>`;
   }).join(' ');
+  const trailingCursor = useMonoPrompt ? '<span class="terminal-cursor"></span>' : '';
   const folio = renderFolio(i + 1, folioStyle);
   return `    <div class="clip page" id="page-${i}" data-start="${startAbs}" data-duration="${dur}" data-track-index="2">
       ${folio}
-      <p class="body">${wordSpans}</p>
+      <p class="body">${wordSpans}${trailingCursor}</p>
     </div>`;
 }).join('\n');
 
@@ -208,6 +209,117 @@ html, body { width: ${width}px; height: ${height}px; overflow: hidden; backgroun
 
 .prompt { color: var(--accent); font-family: var(--font-folio); }
 
+${useMonoPrompt ? `
+.terminal-cursor {
+  display: inline-block;
+  width: 16px; height: 28px;
+  margin-left: 6px;
+  vertical-align: -4px;
+  background: var(--accent);
+  animation: cursor-blink 1s steps(2) infinite;
+}
+@keyframes cursor-blink { 50% { opacity: 0; } }
+` : ''}
+
+.end-card {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: ${vertical ? '48px 56px 72px' : '36px 64px 56px'};
+  display: flex; align-items: center; justify-content: center;
+  gap: 18px;
+  font-family: var(--font-body);
+  font-size: clamp(28px, 2.6vw, 44px);
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-align: center;
+}
+.end-card-text { font-family: var(--font-display); font-weight: 700; }
+.end-card-ornament { color: var(--accent); font-size: 1.4em; }
+.end-card-heart { color: var(--accent); font-size: 1.3em; }
+
+.end-card-medieval {
+  color: var(--accent);
+  letter-spacing: 12px;
+  border-top: 3px double var(--accent);
+  border-bottom: 3px double var(--accent);
+  padding-top: 28px; padding-bottom: 28px;
+  margin: 0 ${vertical ? '80' : '160'}px ${vertical ? '80' : '56'}px;
+}
+.end-card-medieval .end-card-text { font-size: 1.2em; }
+
+.end-card-mythic {
+  color: var(--accent);
+  letter-spacing: 8px;
+  font-style: italic;
+}
+.end-card-mythic .end-card-text { font-family: var(--font-display); font-size: 1.4em; }
+
+.end-card-storybook {
+  color: var(--accent);
+  letter-spacing: 2px;
+  text-transform: none;
+}
+.end-card-storybook .end-card-text {
+  font-family: var(--font-display); font-weight: 900;
+  -webkit-text-stroke: 3px var(--ink);
+  font-size: 1.3em;
+}
+
+.end-card-doodle {
+  color: var(--ink);
+  letter-spacing: 2px;
+  text-transform: none;
+  font-style: italic;
+}
+
+.end-card-bubble {
+  color: var(--ink);
+  letter-spacing: 2px;
+  text-transform: none;
+  font-weight: 400;
+}
+.end-card-bubble .end-card-text { font-family: var(--font-display); }
+
+.end-card-terminal {
+  color: var(--accent);
+  font-family: var(--font-folio);
+  letter-spacing: 3px;
+  justify-content: flex-start;
+  padding-left: ${vertical ? '80' : '120'}px;
+}
+.end-card-terminal .end-card-text { font-family: var(--font-folio); font-weight: 400; }
+
+.end-card-cinema {
+  color: var(--ink);
+  letter-spacing: 18px;
+  font-weight: 700;
+}
+.end-card-cinema .end-card-text { font-size: 1.5em; }
+
+.end-card-midnight {
+  color: var(--accent);
+  letter-spacing: 6px;
+  text-transform: none;
+  font-style: italic;
+}
+
+.end-card-rose {
+  color: var(--accent);
+  letter-spacing: 8px;
+  text-transform: none;
+}
+
+.end-card-default {
+  color: var(--muted);
+  letter-spacing: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bubble { animation: none !important; }
+  .stamp-rotate svg { animation: none !important; }
+  .terminal-cursor { animation: none !important; opacity: 1; }
+}
+
 ${useDropCap ? `
 .drop-cap {
   float: left; display: block;
@@ -288,14 +400,6 @@ ${useScrollBorders ? `
   color: var(--accent); padding: 10px 20px;
   border: 2px solid var(--accent); border-radius: 999px;
 }
-
-.brand {
-  position: absolute; bottom: 0; left: 0; right: 0;
-  padding: 28px 48px;
-  font-family: var(--font-body); font-size: 22px;
-  letter-spacing: 4px; text-transform: uppercase;
-  color: var(--muted); text-align: center;
-}
 `;
 
 const html = `<!doctype html>
@@ -337,7 +441,7 @@ ${scrollBordersMarkup}
 
 ${pageBlocks}
 
-    <div class="clip brand" data-start="0" data-duration="${total.toFixed(2)}" data-track-index="3">audiokids · cuentos a medida</div>
+    ${renderEndCard({ treatment: t, startSec: total - TAIL_SEC, durationSec: TAIL_SEC })}
   </div>
 
   <script>

@@ -45,6 +45,24 @@ export const renderSlideVideoTool: Tool<Input, Output> = {
   description: 'Render a slide-based MP4 from the bundle + transcript, sized for the given platform. Produces videoPath + warnings.',
   inputSchema: InputSchema,
   outputSchema: OutputSchema,
+  composes: [],
+  examples: [
+    {
+      description: 'Render a 1080x1920 TikTok clip using the words[] produced by transcribe (and optionally filtered by moderate-captions).',
+      input: { platform: 'tiktok', words: [{ text: 'hola', start: 0, end: 0.3 }] },
+    },
+    {
+      description: 'Render an Instagram clip and slice the audio to a 60s segment (part 1 of 2 of a longer story).',
+      input: {
+        platform: 'instagram',
+        words: [{ text: 'hola', start: 0, end: 0.3 }],
+        clipStartSec: 0,
+        clipDurationSec: 60,
+        partIndex: 1,
+        partTotal: 2,
+      },
+    },
+  ],
 
   async preflight(input) {
     const variant = VARIANTS[input.platform];

@@ -185,6 +185,59 @@ export function renderScrollBorders({ accent, width, height: _height }) {
   return top + bottom;
 }
 
+export function renderEndCard({ treatment, startSec, durationSec = TAIL_SEC }) {
+  const startAbs = Number(startSec).toFixed(3);
+  const dur = Number(durationSec).toFixed(3);
+  const base = `class="clip end-card" data-start="${startAbs}" data-duration="${dur}" data-track-index="3"`;
+  switch (treatment) {
+    case 'medieval-manuscript':
+      return `<div ${base.replace('end-card', 'end-card end-card-medieval')}>`
+        + `<span class="end-card-ornament" aria-hidden="true">&#9819;</span>`
+        + `<span class="end-card-text">fin</span>`
+        + `<span class="end-card-ornament" aria-hidden="true">&#9819;</span>`
+        + `</div>`;
+    case 'mythic-scroll':
+      return `<div ${base.replace('end-card', 'end-card end-card-mythic')}>`
+        + `<span class="end-card-text">·fin·</span>`
+        + `</div>`;
+    case 'storybook-pop':
+      return `<div ${base.replace('end-card', 'end-card end-card-storybook')}>`
+        + `<span class="end-card-text">&iexcl;y colorín colorado!</span>`
+        + `</div>`;
+    case 'crayon-doodle':
+      return `<div ${base.replace('end-card', 'end-card end-card-doodle')}>`
+        + `<span class="end-card-text">~ fin ~</span>`
+        + `</div>`;
+    case 'bubble-pastel':
+      return `<div ${base.replace('end-card', 'end-card end-card-bubble')}>`
+        + `<span class="end-card-text">buenas noches</span>`
+        + `<span class="end-card-heart" aria-hidden="true">&#9825;</span>`
+        + `</div>`;
+    case 'terminal-crt':
+      return `<div ${base.replace('end-card', 'end-card end-card-terminal')}>`
+        + `<span class="prompt">&gt; </span>`
+        + `<span class="end-card-text">EOF</span>`
+        + `<span class="terminal-cursor"></span>`
+        + `</div>`;
+    case 'epic-cinematic':
+      return `<div ${base.replace('end-card', 'end-card end-card-cinema')}>`
+        + `<span class="end-card-text">FIN</span>`
+        + `</div>`;
+    case 'midnight':
+      return `<div ${base.replace('end-card', 'end-card end-card-midnight')}>`
+        + `<span class="end-card-text">dulces sueños</span>`
+        + `</div>`;
+    case 'rose-stamp':
+      return `<div ${base.replace('end-card', 'end-card end-card-rose')}>`
+        + `<span class="end-card-text">con cariño</span>`
+        + `</div>`;
+    default:
+      return `<div ${base.replace('end-card', 'end-card end-card-default')}>`
+        + `<span class="end-card-text">audiokids · cuentos a medida</span>`
+        + `</div>`;
+  }
+}
+
 /** Read story payload from stdin as a single JSON blob. */
 export async function readStoryFromStdin() {
   const chunks = [];

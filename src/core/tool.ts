@@ -34,11 +34,18 @@ export interface ToolContext {
   logger: ToolLogger;
 }
 
+export interface ToolExample {
+  readonly description: string;
+  readonly input: Record<string, unknown>;
+}
+
 export interface Tool<In = unknown, Out = unknown> {
   readonly name: string;
   readonly description: string;
   readonly inputSchema: z.ZodType<In>;
   readonly outputSchema: z.ZodType<Out>;
+  readonly examples?: ReadonlyArray<ToolExample>;
+  readonly composes?: ReadonlyArray<string>;
   preflight?(input: In, ctx: ToolContext): Promise<PreflightResult>;
   run(input: In, ctx: ToolContext): Promise<Out>;
 }

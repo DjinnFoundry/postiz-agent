@@ -54,6 +54,21 @@ export const transcribeTool: Tool<Input, Output> = {
   description: 'Word-level speech-to-text via Whisper. Input: bundle with audio primaryMedia. Output: words[] and cached json path.',
   inputSchema: InputSchema,
   outputSchema: OutputSchema,
+  composes: ['moderate-captions', 'render-slide-video'],
+  examples: [
+    {
+      description: 'Transcribe a story loaded by --id using the default whisper model and the bundle locale.',
+      input: {},
+    },
+    {
+      description: 'Use a larger model and flag low-confidence words (useful when whisper mis-hears proper nouns).',
+      input: { model: 'medium', minConfidence: 0.5 },
+    },
+    {
+      description: 'Auto-trim long leading/trailing silence before transcribing so caption timings align with the slide pacing.',
+      input: { trimSilence: true, model: 'base' },
+    },
+  ],
 
   async preflight(input) {
     const src = input.audioPath ?? input.bundle?.primaryMedia;

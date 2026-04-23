@@ -134,4 +134,55 @@ describe('resolveTheme: persistence', () => {
     resolveTheme(b, { store, persist: false });
     expect(store.get(b.id)).toBeUndefined();
   });
+
+  it('stamps new decisions with catalog.catalogVersion', () => {
+    const { store } = freshStore();
+    const b = bundle({ id: 'versioned', theme: { treatment: 'midnight' } });
+    resolveTheme(b, { store });
+    const got = store.get(b.id);
+    expect(got?.catalogVersion).toBe(CATALOG.catalogVersion);
+  });
+});
+
+describe('resolveTheme: staleness', () => {
+  it('ignores a prior decision whose catalogVersion does not match the current catalog', () => {
+    const { store } = freshStore();
+    store.set({
+      bundleId: 'stale-id',
+      treatmentId: 'midnight',
+      source: 'explicit',
+      decidedAt: '2026-01-01T00:00:00.000Z',
+      catalogVersion: '0:0:0',
+    });
+    const r = resolveTheme(bundle({ id: 'stale-id' }), { store });
+    expect(r.source).not.toBe('explicit');
+  });
+
+  it('ignores a prior decision pointing at an unknown treatment id', () => {
+    const { store } = freshStore();
+    store.set({
+      bundleId: 'ghost-id',
+      treatmentId: 'does-not-exist',
+      source: 'explicit',
+      decidedAt: '2026-01-01T00:00:00.000Z',
+      catalogVersion: CATALOG.catalogVersion,
+    });
+    const r = resolveTheme(bundle({ id: 'ghost-id' }), { store });
+    expect(r.treatment.id).not.toBe('does-not-exist');
+  });
+
+  it('ignores a prior legacy decision without catalogVersion so it gets re-resolved', () => {
+    const { store } = freshStore();
+    store.set({
+      bundleId: 'legacy-id',
+      treatmentId: 'midnight',
+      source: 'explicit',
+      decidedAt: '2026-01-01T00:00:00.000Z',
+    });
+    const r = resolveTheme(bundle({ id: 'legacy-id' }), { store });
+    // Re-resolution rewrites the decision with the current catalogVersion so
+    // the next call is stable again.
+    expect(store.get('legacy-id')?.catalogVersion).toBe(CATALOG.catalogVersion);
+    expect(r.source).not.toBe('explicit');
+  });
 });

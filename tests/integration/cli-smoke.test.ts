@@ -189,17 +189,59 @@ describe('CLI smoke: decisions --run-id', () => {
 });
 
 describe('CLI smoke: tools describe', () => {
-  it('prints full descriptor for a known tool', () => {
-    const { stdout, status } = runCli(['tools', 'describe', 'transcribe']);
+  it('prints full descriptor (including examples) as JSON when --json is set', () => {
+    const { stdout, status } = runCli(['tools', 'describe', 'transcribe', '--json']);
     expect(status).toBe(0);
     const d = JSON.parse(stdout);
     expect(d.name).toBe('transcribe');
     expect(d.inputSchema).toHaveProperty('properties');
     expect(d.outputSchema).toHaveProperty('properties');
+    expect(Array.isArray(d.examples)).toBe(true);
+    expect(d.examples.length).toBeGreaterThanOrEqual(1);
+    expect(d.examples[0]).toHaveProperty('description');
+    expect(d.examples[0]).toHaveProperty('input');
+    expect(Array.isArray(d.composes)).toBe(true);
+  });
+
+  it('prints a human-readable guide (without --json) mentioning Examples:', () => {
+    const { stdout, status } = runCli(['tools', 'describe', 'transcribe']);
+    expect(status).toBe(0);
+    expect(stdout).toContain('transcribe');
+    expect(stdout).toMatch(/Examples:/);
+    expect(stdout).toMatch(/Typical next steps/i);
+    expect(stdout).toContain('moderate-captions');
   });
 
   it('exits non-zero for unknown tool', () => {
     const { status, stderr } = runCli(['tools', 'describe', 'nope-tool']);
+    expect(status).not.toBe(0);
+    expect(stderr).toMatch(/unknown tool/);
+  });
+});
+
+describe('CLI smoke: tools docs', () => {
+  it('without args, lists every registered tool with a one-line description', () => {
+    const { stdout, status } = runCli(['tools', 'docs']);
+    expect(status).toBe(0);
+    for (const name of ['transcribe', 'moderate-captions', 'render-slide-video', 'resolve-theme', 'choose-theme']) {
+      expect(stdout).toContain(name);
+    }
+    expect(stdout).toMatch(/tools docs <name>/);
+  });
+
+  it('with a tool name, prints a full markdown-ish guide including composes', () => {
+    const { stdout, status } = runCli(['tools', 'docs', 'transcribe']);
+    expect(status).toBe(0);
+    expect(stdout).toContain('# transcribe');
+    expect(stdout).toMatch(/## Description/);
+    expect(stdout).toMatch(/## Input/);
+    expect(stdout).toMatch(/## Output/);
+    expect(stdout).toMatch(/## Examples/);
+    expect(stdout).toContain('moderate-captions');
+  });
+
+  it('exits non-zero for an unknown tool name', () => {
+    const { status, stderr } = runCli(['tools', 'docs', 'nope-tool']);
     expect(status).not.toBe(0);
     expect(stderr).toMatch(/unknown tool/);
   });
@@ -299,6 +341,19 @@ describe('CLI smoke: themes describe', () => {
     const { status, stderr, stdout } = runCli(['themes', 'describe', 'unknown-treatment-id']);
     expect(status).not.toBe(0);
     expect(stderr + stdout).toMatch(/unknown|not found|unknown-treatment-id/i);
+  });
+});
+
+describe('CLI smoke: themes check-decisions --json', () => {
+  it('returns a JSON array (possibly empty) and exits 0', () => {
+    const { stdout, status } = runCli(['themes', 'check-decisions', '--json']);
+    expect(status).toBe(0);
+    const parsed = JSON.parse(stdout);
+    expect(Array.isArray(parsed)).toBe(true);
+    for (const entry of parsed) {
+      expect(entry).toHaveProperty('bundleId');
+      expect(entry).toHaveProperty('reason');
+    }
   });
 });
 

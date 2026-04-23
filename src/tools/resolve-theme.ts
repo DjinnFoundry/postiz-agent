@@ -29,6 +29,17 @@ export const resolveThemeTool: Tool<Input, Output> = {
   description: 'Resolve a ContentBundle to a concrete treatment + palette + fonts. Deterministic per bundle.id; persists the decision.',
   inputSchema: InputSchema,
   outputSchema: OutputSchema,
+  composes: ['render-slide-video'],
+  examples: [
+    {
+      description: 'Resolve (and persist) the theme for a bundle. Subsequent calls return the same (treatment, palette, fonts).',
+      input: {},
+    },
+    {
+      description: 'Preview-only resolution: compute the theme without writing it to data/theme-decisions.json (safe during --dry-run).',
+      input: { preview: true },
+    },
+  ],
 
   async run(input) {
     const resolved = resolveTheme(input.bundle, { persist: !input.preview });
@@ -73,6 +84,17 @@ export const chooseThemeTool: Tool<ChooseInput, ChooseOutput> = {
   description: 'An agent-facing override: persist a specific treatment choice for bundle.id. Must be a known treatment. Idempotent.',
   inputSchema: ChooseInputSchema,
   outputSchema: ChooseOutputSchema,
+  composes: ['render-slide-video'],
+  examples: [
+    {
+      description: 'Lock a treatment choice for this bundle so future renders reuse it (no palette/font override).',
+      input: { treatmentId: 'hero-display' },
+    },
+    {
+      description: 'Pin treatment, palette, and font pairing together (full agent decision).',
+      input: { treatmentId: 'midnight', paletteId: 'midnight-deep', fontPairingId: 'serif-modern', decidedBy: 'agent-v1' },
+    },
+  ],
 
   async preflight(input) {
     const { loadCatalog } = await import('../theme/catalog.js');

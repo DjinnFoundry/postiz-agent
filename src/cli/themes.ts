@@ -1,4 +1,10 @@
-import { loadCatalog, type ThemeCatalog } from '../theme/catalog.js';
+import {
+  loadCatalog,
+  ThemeDecisionStore,
+  type StaleDecisionEntry,
+  type ThemeCatalog,
+  type ThemeDecisionStaleReason,
+} from '../theme/catalog.js';
 import type { FontPairing, Palette, Treatment } from '../theme/types.js';
 
 export interface ThemeListRow {
@@ -101,6 +107,85 @@ export function formatThemesList(report: ThemesListReport): string {
   for (const row of rows) out.push('  ' + line(row));
   out.push('');
   out.push('Run `postiz-agent themes describe <id>` for palette hex codes and font details.');
+  return out.join('\n');
+}
+
+export interface CheckDecisionsRow {
+  bundleId: string;
+  treatmentId: string;
+  reason: ThemeDecisionStaleReason;
+  catalogVersion?: string;
+  currentCatalogVersion: string;
+}
+
+export interface CheckDecisionsOptions {
+  catalog?: ThemeCatalog;
+  store?: ThemeDecisionStore;
+  fix?: boolean;
+}
+
+export interface CheckDecisionsResult {
+  stale: CheckDecisionsRow[];
+  cleared: CheckDecisionsRow[];
+  currentCatalogVersion: string;
+}
+
+export function checkDecisions(opts: CheckDecisionsOptions = {}): CheckDecisionsResult {
+  const catalog = opts.catalog ?? loadCatalog();
+  const store = opts.store ?? new ThemeDecisionStore();
+  const staleEntries = store.listStale(catalog);
+  const stale = staleEntries.map(e => toRow(e, catalog.catalogVersion));
+
+  let cleared: CheckDecisionsRow[] = [];
+  if (opts.fix && staleEntries.length > 0) {
+    const removed = store.clearStale(catalog);
+    cleared = removed.map(e => toRow(e, catalog.catalogVersion));
+  }
+
+  return {
+    stale,
+    cleared,
+    currentCatalogVersion: catalog.catalogVersion,
+  };
+}
+
+function toRow(entry: StaleDecisionEntry, currentCatalogVersion: string): CheckDecisionsRow {
+  return {
+    bundleId: entry.bundleId,
+    treatmentId: entry.decision.treatmentId,
+    reason: entry.reason,
+    catalogVersion: entry.decision.catalogVersion,
+    currentCatalogVersion,
+  };
+}
+
+export function formatCheckDecisions(result: CheckDecisionsResult, opts: { fix?: boolean } = {}): string {
+  const out: string[] = [];
+  const suffix = opts.fix ? ` (cleared ${result.cleared.length})` : '';
+  out.push(`── theme decisions check (catalogVersion=${result.currentCatalogVersion})${suffix} ──`);
+  out.push('');
+  if (result.stale.length === 0) {
+    out.push('  no stale decisions');
+    return out.join('\n');
+  }
+  const header = ['bundleId', 'treatmentId', 'reason', 'wasVersion'];
+  const rows = result.stale.map(r => [
+    r.bundleId,
+    r.treatmentId,
+    r.reason,
+    r.catalogVersion ?? '(none)',
+  ]);
+  const widths = header.map((h, i) => Math.max(h.length, ...rows.map(row => row[i].length)));
+  const line = (cells: string[]) => cells.map((c, i) => c.padEnd(widths[i])).join('  ');
+  out.push('  ' + line(header));
+  out.push('  ' + widths.map(w => '-'.repeat(w)).join('  '));
+  for (const row of rows) out.push('  ' + line(row));
+  out.push('');
+  if (opts.fix) {
+    out.push(`cleared ${result.cleared.length} stale entr${result.cleared.length === 1 ? 'y' : 'ies'}. Next publish will re-resolve.`);
+  } else {
+    out.push('Run with --fix to clear stale entries (next publish will re-resolve them).');
+  }
   return out.join('\n');
 }
 

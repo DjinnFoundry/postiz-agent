@@ -1,11 +1,13 @@
 import { zodToJsonSchema } from './zod-json-schema.js';
-import type { Tool } from './tool.js';
+import type { Tool, ToolExample } from './tool.js';
 
 export interface ToolDescriptor {
   name: string;
   description: string;
   inputSchema: unknown;
   outputSchema: unknown;
+  examples: ToolExample[];
+  composes: string[];
 }
 
 /**
@@ -46,6 +48,8 @@ export class ToolRegistry {
         description: t.description,
         inputSchema: zodToJsonSchema(t.inputSchema),
         outputSchema: zodToJsonSchema(t.outputSchema),
+        examples: t.examples ? t.examples.map(e => ({ description: e.description, input: { ...e.input } })) : [],
+        composes: t.composes ? [...t.composes] : [],
       };
     });
   }

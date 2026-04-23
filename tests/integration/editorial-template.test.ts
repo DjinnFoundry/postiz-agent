@@ -152,3 +152,80 @@ describe('editorial.mjs theme-specific markers', () => {
     }
   });
 });
+
+describe('editorial.mjs polish: terminal cursor, end-card, reduced motion', () => {
+  it('terminal-crt emits a blinking cursor marker at the end of each page', () => {
+    const { html } = runEditorial(payloadFor('terminal-crt', ASPECTS[0]));
+    expect(html).toContain('terminal-cursor');
+    expect(html).toContain('cursor-blink');
+  });
+
+  it('non-terminal treatments do not emit the terminal-cursor span', () => {
+    for (const id of ['hero-display', 'midnight', 'rose-stamp', 'medieval-manuscript', 'bubble-pastel']) {
+      const { html } = runEditorial(payloadFor(id, ASPECTS[0]));
+      expect(html, `treatment=${id}`).not.toContain('<span class="terminal-cursor">');
+    }
+  });
+
+  it('medieval-manuscript end-card says "fin" with crown ornament', () => {
+    const { html } = runEditorial(payloadFor('medieval-manuscript', ASPECTS[0]));
+    expect(html).toContain('end-card');
+    expect(html).toContain('end-card-medieval');
+    expect(html).toContain('fin');
+  });
+
+  it('mythic-scroll end-card says "·fin·"', () => {
+    const { html } = runEditorial(payloadFor('mythic-scroll', ASPECTS[0]));
+    expect(html).toContain('end-card-mythic');
+    expect(html).toContain('·fin·');
+  });
+
+  it('storybook-pop end-card says "colorín colorado"', () => {
+    const { html } = runEditorial(payloadFor('storybook-pop', ASPECTS[0]));
+    expect(html).toContain('end-card-storybook');
+    expect(html).toContain('colorado');
+  });
+
+  it('bubble-pastel end-card says "buenas noches" with a heart', () => {
+    const { html } = runEditorial(payloadFor('bubble-pastel', ASPECTS[0]));
+    expect(html).toContain('end-card-bubble');
+    expect(html).toContain('buenas noches');
+  });
+
+  it('terminal-crt end-card says "> EOF" with cursor', () => {
+    const { html } = runEditorial(payloadFor('terminal-crt', ASPECTS[0]));
+    expect(html).toContain('end-card-terminal');
+    expect(html).toContain('EOF');
+  });
+
+  it('default treatments use the audiokids brand end-card', () => {
+    const { html } = runEditorial(payloadFor('hero-display', ASPECTS[0]));
+    expect(html).toContain('end-card-default');
+    expect(html).toContain('audiokids');
+  });
+
+  it('end-card is a clip scheduled in the last TAIL_SEC of the render', () => {
+    const { html } = runEditorial(payloadFor('medieval-manuscript', ASPECTS[0]));
+    const match = html.match(/class="clip end-card[^"]*"[^>]*data-start="([0-9.]+)"[^>]*data-duration="([0-9.]+)"/);
+    expect(match).toBeTruthy();
+    const start = Number(match![1]);
+    const duration = Number(match![2]);
+    expect(duration).toBeCloseTo(1.5, 2);
+    expect(start).toBeGreaterThan(0);
+  });
+
+  it('old always-on brand bar is no longer rendered', () => {
+    const { html } = runEditorial(payloadFor('hero-display', ASPECTS[0]));
+    expect(html).not.toMatch(/<div class="clip brand"[^>]*>audiokids · cuentos a medida<\/div>/);
+  });
+
+  it('CSS includes prefers-reduced-motion guard', () => {
+    const { html } = runEditorial(payloadFor('bubble-pastel', ASPECTS[0]));
+    expect(html).toContain('prefers-reduced-motion: reduce');
+  });
+
+  it('rose-stamp CSS includes prefers-reduced-motion guard', () => {
+    const { html } = runEditorial(payloadFor('rose-stamp', ASPECTS[0]));
+    expect(html).toContain('prefers-reduced-motion: reduce');
+  });
+});

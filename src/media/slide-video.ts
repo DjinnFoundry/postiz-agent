@@ -1,25 +1,20 @@
-import { copyFileSync, cpSync, existsSync, mkdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { config } from '../config.js';
 import { run } from '../lib/process.js';
-import { probeDurationSec } from '../lib/ffprobe.js';
 import type { ContentBundle } from '../core/content-bundle.js';
 import { resolveTagline } from '../core/content-bundle.js';
 import { resolveTheme } from '../theme/resolver.js';
-import { VARIANTS, type Mood, type Platform, type WordEntry } from '../types.js';
+import { VARIANTS, type Platform, type WordEntry } from '../types.js';
+import { finalizeRender, persistStderr } from './render-output.js';
 
 export interface SlideDimensions {
   width: number;
   height: number;
 }
 
-/** Template used for every bundle. The mood/treatment is passed via the payload. */
+/** Template used for every bundle. The treatment is passed via the payload. */
 const EDITORIAL_TEMPLATE = 'editorial.mjs';
-/** When the theme engine cannot pick anything, this mood hint powers the fallback lookup. */
-const FALLBACK_MOOD: Mood = 'fantasia';
-
-/** Smallest plausible MP4 size for a rendered slide video. Anything under is treated as corrupt. */
-const MIN_VALID_MP4_BYTES = 100 * 1024; // 100KB
 
 export interface BuildInput {
   platform: Platform;
@@ -34,7 +29,7 @@ export interface BuildInput {
   /** 1-based part index (IG multi-part). */
   partIndex?: number;
   partTotal?: number;
-  /** Optional warning sink (mood fallback, etc.). Also returned on BuildResult. */
+  /** Optional warning sink. Also returned on BuildResult. */
   onWarn?: (msg: string) => void;
 }
 
@@ -77,17 +72,12 @@ export class SlideVideoBuilder {
     }
 
     const warnings: string[] = [];
-    const warn = (m: string) => { warnings.push(m); input.onWarn?.(m); console.warn(m); };
 
     const workspace = this.createWorkspace(input.bundle.id, input.platform, input.partIndex);
     const logFile = this.reserveRenderLog(input.bundle.id, input.platform, input.partIndex);
     try {
-      const templateName = this.resolveTemplateName(workspace, input.bundle);
-      if (templateName !== EDITORIAL_TEMPLATE) {
-        warn(`⚠ editorial.mjs not found; falling back to legacy template ${templateName}`);
-      }
-
-      const theme = templateName === EDITORIAL_TEMPLATE ? resolveTheme(input.bundle) : undefined;
+      this.assertEditorialTemplate(workspace);
+      const theme = resolveTheme(input.bundle);
 
       const clipStart = input.clipStartSec ?? 0;
       const lastEnd = input.words.at(-1)?.end ?? 0;
@@ -97,16 +87,15 @@ export class SlideVideoBuilder {
       await this.stageAssets(workspace, audioPath, clippedWords, clipStart, clipDuration);
       await this.runTemplate(
         workspace,
-        templateName,
         this.buildStoryPayload(input, clippedWords, dims, clipDuration, theme),
         logFile,
       );
       const rendered = await this.renderVideo(workspace, input.bundle.id, input.platform, input.partIndex, logFile);
 
-      await this.finalize(rendered, input.outputPath);
+      await finalizeRender(rendered, input.outputPath);
       return { outputPath: input.outputPath, warnings };
     } catch (err) {
-      this.persistStderr(err, logFile);
+      persistStderr(err, logFile);
       throw err;
     } finally {
       rmSync(workspace, { recursive: true, force: true });
@@ -143,28 +132,11 @@ export class SlideVideoBuilder {
     return join(RENDER_LOG_DIR, `${id}-${platform}${suffix}-${ts}.log`);
   }
 
-  private persistStderr(err: unknown, logFile: string): void {
-    const payload = err instanceof Error
-      ? `${err.name}: ${err.message}\n${err.stack ?? ''}\n`
-      : String(err);
-    try {
-      writeFileSync(logFile, payload);
-      console.error(`  render log written to ${logFile}`);
-    } catch {
-      /* logging the logger is a lost cause */
-    }
-  }
-
-  /**
-   * editorial.mjs is the preferred template (C.1 theme engine); when absent we fall
-   * back to the per-mood templates. Returns just the filename within templates/.
-   */
-  private resolveTemplateName(workspace: string, bundle: ContentBundle): string {
+  private assertEditorialTemplate(workspace: string): void {
     const editorial = join(workspace, 'templates', EDITORIAL_TEMPLATE);
-    if (existsSync(editorial)) return EDITORIAL_TEMPLATE;
-    const mood = (bundle.theme?.mood ?? FALLBACK_MOOD) as Mood;
-    if (existsSync(join(workspace, 'templates', `${mood}.mjs`))) return `${mood}.mjs`;
-    return `${FALLBACK_MOOD}.mjs`;
+    if (!existsSync(editorial)) {
+      throw new Error(`HyperFrames template missing: ${editorial}`);
+    }
   }
 
   private buildStoryPayload(
@@ -172,7 +144,7 @@ export class SlideVideoBuilder {
     words: WordEntry[],
     dims: SlideDimensions,
     clipDurationSec: number,
-    theme?: ReturnType<typeof resolveTheme>,
+    theme: ReturnType<typeof resolveTheme>,
   ) {
     const b = input.bundle;
     const title = b.text.title ?? b.id;
@@ -180,22 +152,19 @@ export class SlideVideoBuilder {
     const payload: Record<string, unknown> = {
       title,
       byline,
-      mood: b.theme?.mood ?? FALLBACK_MOOD,
       audioSrc: 'assets/narration.mp3',
       words,
       width: dims.width,
       height: dims.height,
       clipStartSec: input.clipStartSec ?? 0,
       clipDurationSec,
-    };
-    if (theme) {
-      payload.theme = {
+      theme: {
         treatment: theme.treatment,
         palette: theme.palette,
         fontPairing: theme.fontPairing,
         source: theme.source,
-      };
-    }
+      },
+    };
     if (input.partIndex && input.partTotal && input.partTotal > 1) {
       payload.partIndex = input.partIndex;
       payload.partTotal = input.partTotal;
@@ -231,8 +200,8 @@ export class SlideVideoBuilder {
     writeFileSync(join(workspace, 'transcript.json'), JSON.stringify(words, null, 2));
   }
 
-  private async runTemplate(workspace: string, templateName: string, payload: object, logFile: string): Promise<void> {
-    const templatePath = join(workspace, 'templates', templateName);
+  private async runTemplate(workspace: string, payload: object, logFile: string): Promise<void> {
+    const templatePath = join(workspace, 'templates', EDITORIAL_TEMPLATE);
     if (!existsSync(templatePath)) {
       throw new Error(`No HyperFrames template at ${templatePath}`);
     }
@@ -240,7 +209,7 @@ export class SlideVideoBuilder {
       await run('node', [templatePath], { cwd: workspace, stdin: JSON.stringify(payload) });
       await run('npx', ['hyperframes', 'lint'], { cwd: workspace });
     } catch (err) {
-      this.persistStderr(err, logFile);
+      persistStderr(err, logFile);
       throw err;
     }
   }
@@ -252,41 +221,11 @@ export class SlideVideoBuilder {
     try {
       await run('npx', ['hyperframes', 'render', '--output', renderOut, '--quiet'], { cwd: workspace });
     } catch (err) {
-      this.persistStderr(err, logFile);
+      persistStderr(err, logFile);
       throw err;
     }
     if (!existsSync(renderOut)) throw new Error(`hyperframes render produced no output at ${renderOut}`);
     return renderOut;
-  }
-
-  /**
-   * Atomic finalize: write to `<outputPath>.tmp`, verify integrity, then rename.
-   * If verification fails the tmp is cleaned up so we never leave a half-written
-   * MP4 at the target path (which would poison caches / uploads).
-   */
-  private async finalize(renderedPath: string, outputPath: string): Promise<void> {
-    mkdirSync(dirname(outputPath), { recursive: true });
-    const tmpPath = `${outputPath}.tmp`;
-    copyFileSync(renderedPath, tmpPath);
-    try {
-      this.assertValidMp4(tmpPath);
-      const duration = await probeDurationSec(tmpPath);
-      if (!(duration > 0)) {
-        throw new Error(`rendered MP4 reports duration=${duration}s; treated as corrupt`);
-      }
-      renameSync(tmpPath, outputPath);
-    } catch (err) {
-      try { rmSync(tmpPath, { force: true }); } catch { /* noop */ }
-      throw err;
-    }
-  }
-
-  private assertValidMp4(path: string): void {
-    if (!existsSync(path)) throw new Error(`rendered MP4 missing: ${path}`);
-    const stat = statSync(path);
-    if (stat.size < MIN_VALID_MP4_BYTES) {
-      throw new Error(`rendered MP4 too small (${stat.size} bytes); minimum ${MIN_VALID_MP4_BYTES}. Likely corrupt or empty.`);
-    }
   }
 }
 

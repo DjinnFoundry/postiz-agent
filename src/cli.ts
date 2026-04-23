@@ -20,8 +20,16 @@ import { runDoctor, formatDoctorReport } from './cli/doctor.js';
 import { runStats, formatStatsReport } from './cli/stats.js';
 import { runStatus, formatStatusReport } from './cli/status.js';
 import { runCtaAb, formatCtaAbReport } from './cli/cta-ab.js';
-import { listThemes, describeTheme, formatThemesList, formatThemeDescription } from './cli/themes.js';
+import {
+  listThemes,
+  describeTheme,
+  formatThemesList,
+  formatThemeDescription,
+  checkDecisions,
+  formatCheckDecisions,
+} from './cli/themes.js';
 import { generateGallery, formatGalleryResult, type GalleryAspect } from './cli/gallery.js';
+import { formatToolDescribeHuman, formatToolsDocsIndex, formatToolDocs } from './cli/tools-docs.js';
 
 const program = new Command();
 
@@ -664,16 +672,40 @@ tools
 
 tools
   .command('describe')
-  .description('Print the full JSON schema for a single tool (input + output + description)')
+  .description('Print the full descriptor for a single tool (schemas, examples, composes)')
   .argument('<name>', 'tool name')
-  .action((name: string) => {
+  .option('--json', 'emit the descriptor as JSON (default is a human-readable summary)', false)
+  .action((name: string, opts: { json?: boolean }) => {
     const registry = createDefaultRegistry();
     if (!registry.has(name)) {
       console.error(`unknown tool: ${name}. Available: ${registry.names().join(', ')}`);
       process.exit(1);
     }
     const [descriptor] = registry.list().filter(d => d.name === name);
-    process.stdout.write(JSON.stringify(descriptor, null, 2) + '\n');
+    if (opts.json) {
+      process.stdout.write(JSON.stringify(descriptor, null, 2) + '\n');
+      return;
+    }
+    process.stdout.write(formatToolDescribeHuman(descriptor) + '\n');
+  });
+
+tools
+  .command('docs')
+  .description('Print a markdown-ish guide for all tools, or for a single tool when a name is passed')
+  .argument('[name]', 'tool name (omit to list every tool)')
+  .action((name: string | undefined) => {
+    const registry = createDefaultRegistry();
+    const descriptors = registry.list();
+    if (!name) {
+      process.stdout.write(formatToolsDocsIndex(descriptors) + '\n');
+      return;
+    }
+    if (!registry.has(name)) {
+      console.error(`unknown tool: ${name}. Available: ${registry.names().join(', ')}`);
+      process.exit(1);
+    }
+    const descriptor = descriptors.find(d => d.name === name)!;
+    process.stdout.write(formatToolDocs(descriptor) + '\n');
   });
 
 tools
@@ -823,6 +855,31 @@ themes
     }
     if (opts.json) process.stdout.write(JSON.stringify(desc, null, 2) + '\n');
     else console.log(formatThemeDescription(desc));
+  });
+
+themes
+  .command('check-decisions')
+  .description('List theme-decision entries whose treatmentId or catalogVersion no longer matches the current catalog')
+  .option('--json', 'emit the stale list as a JSON array (possibly empty)', false)
+  .option('--fix', 'delete stale entries so the next publish re-resolves the theme', false)
+  .addHelpText('after', `
+Stale reasons:
+  unknown-treatment-id  (the saved treatmentId no longer exists in the catalog)
+  version-mismatch      (the catalogVersion recorded at save-time differs from now)
+  legacy-no-version     (saved before catalogVersion stamping was introduced)
+
+--fix clears stale entries only. Re-resolving is deferred to the next publish,
+which runs the full resolver for the bundle (explicit -> keywords -> mood -> fallback).
+
+Examples:
+  postiz-agent themes check-decisions --json
+  postiz-agent themes check-decisions --fix
+`)
+  .action((opts: { json?: boolean; fix?: boolean }) => {
+    const result = checkDecisions({ fix: opts.fix });
+    if (opts.json) process.stdout.write(JSON.stringify(result.stale, null, 2) + '\n');
+    else console.log(formatCheckDecisions(result, { fix: opts.fix }));
+    process.exit(0);
   });
 
 // ─────────────────────────── gallery ───────────────────────────
