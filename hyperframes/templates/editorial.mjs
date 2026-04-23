@@ -21,6 +21,7 @@ import { writeFileSync } from 'node:fs';
 import {
   HEAD_SEC, TAIL_SEC, buildPages, escHtml, emitWordColorTimeline,
   readStoryFromStdin, renderPartRibbon, resolveFontLinks,
+  renderCornerOrnaments, renderScrollBorders,
 } from './common.mjs';
 
 const MIN_BODY_PX = 32;
@@ -55,6 +56,8 @@ const useStamp = Boolean(hints.stamp);
 const useLetterbox = Boolean(hints.letterbox);
 const useScanLines = Boolean(hints.scanLines);
 const useBubbles = Boolean(hints.bubbles);
+const useCornerOrnaments = Boolean(hints.marginDecorations);
+const useScrollBorders = Boolean(hints.scrollBorders);
 const useMonoPrompt = Boolean(hints.prompt);
 const textAlign = hints.textAlign ?? 'left';
 const folioStyle = hints.showFolio ? (hints.folioStyle ?? 'classic') : 'none';
@@ -104,6 +107,12 @@ const stampMarkup = useStamp ? renderStamp(hints.stamp) : '';
 const letterboxMarkup = useLetterbox ? '<div class="letterbox-top"></div><div class="letterbox-bottom"></div>' : '';
 const scanLinesMarkup = useScanLines ? '<div class="scanlines"></div>' : '';
 const bubblesMarkup = useBubbles ? renderBubbles(pal) : '';
+const cornerOrnamentsMarkup = useCornerOrnaments
+  ? renderCornerOrnaments({ accent: pal.accent, size: vertical ? 220 : 200 })
+  : '';
+const scrollBordersMarkup = useScrollBorders
+  ? renderScrollBorders({ accent: pal.accent, width, height })
+  : '';
 
 function renderStamp({ text, rotate }) {
   return `<div class="stamp${rotate ? ' stamp-rotate' : ''}"><svg viewBox="0 0 200 200"><defs><path id="circ" d="M 100 100 m -78 0 a 78 78 0 1 1 156 0 a 78 78 0 1 1 -156 0"/></defs><text><textPath href="#circ" startOffset="0">${escHtml(text)}</textPath></text></svg></div>`;
@@ -248,6 +257,30 @@ ${useBubbles ? `
 @keyframes bubble-drift { to { transform: translate(40px, -60px); } }
 ` : ''}
 
+${useCornerOrnaments ? `
+.corner-ornament {
+  position: absolute;
+  pointer-events: none;
+  z-index: 2;
+}
+.corner-ornament svg { width: 100%; height: 100%; display: block; }
+.corner-ornament-tl { top: 32px; left: 32px; }
+.corner-ornament-tr { top: 32px; right: 32px; transform: scaleX(-1); }
+.corner-ornament-bl { bottom: 32px; left: 32px; transform: scaleY(-1); }
+.corner-ornament-br { bottom: 32px; right: 32px; transform: scale(-1, -1); }
+` : ''}
+
+${useScrollBorders ? `
+.scroll-border {
+  position: absolute; left: 0; right: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+.scroll-border-svg { width: 100%; height: 100%; display: block; }
+.scroll-border-top { top: 48px; }
+.scroll-border-bottom { bottom: 48px; transform: scaleY(-1); }
+` : ''}
+
 .part-ribbon {
   position: absolute; top: ${vertical ? '140' : '96'}px; right: ${vertical ? '80' : '96'}px;
   font-family: var(--font-body); font-size: 22px;
@@ -286,6 +319,8 @@ ${fontLinks}
 ${letterboxMarkup}
 ${scanLinesMarkup}
 ${bubblesMarkup}
+${cornerOrnamentsMarkup}
+${scrollBordersMarkup}
     </div>
 
     <div class="clip intro" data-start="0" data-duration="${HEAD_SEC}" data-track-index="1">

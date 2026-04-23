@@ -51,6 +51,8 @@ export interface RunOptions {
   logger?: ToolLogger;
   /** Initial state injected into ctx before first step. */
   initialState?: Record<string, unknown>;
+  /** Fires after every step resolves (ok, skipped, or failed). Non-breaking: optional. */
+  onStepComplete?: (step: PipelineStepResult) => void;
 }
 
 export class PipelineRunner {
@@ -68,6 +70,10 @@ export class PipelineRunner {
     };
 
     const results: PipelineStepResult[] = [];
+    const push = (r: PipelineStepResult) => {
+      results.push(r);
+      if (opts.onStepComplete) opts.onStepComplete(r);
+    };
     for (const step of spec.steps) {
       const tool = this.registry.get(step.tool);
       const rawInput = {
@@ -82,7 +88,7 @@ export class PipelineRunner {
       const parsed = tool.inputSchema.safeParse(rawInput);
       if (!parsed.success) {
         const msg = `input validation failed for "${tool.name}": ${parsed.error.message}`;
-        results.push({ tool: step.tool, ok: false, error: msg, durationMs: Date.now() - startedAt });
+        push({ tool: step.tool, ok: false, error: msg, durationMs: Date.now() - startedAt });
         ctx.logger.error(msg);
         if (!step.optional) return { pipeline: spec.name, bundleId: bundle.id, ok: false, results };
         continue;
@@ -92,13 +98,13 @@ export class PipelineRunner {
         try {
           const pre = await tool.preflight(parsed.data, ctx);
           if (!pre.ok) {
-            results.push({ tool: step.tool, ok: true, skipped: { reason: pre.reason }, durationMs: Date.now() - startedAt });
+            push({ tool: step.tool, ok: true, skipped: { reason: pre.reason }, durationMs: Date.now() - startedAt });
             ctx.logger.info(`→ ${tool.name} skipped: ${pre.reason}`);
             continue;
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
-          results.push({ tool: step.tool, ok: false, error: `preflight threw: ${msg}`, durationMs: Date.now() - startedAt });
+          push({ tool: step.tool, ok: false, error: `preflight threw: ${msg}`, durationMs: Date.now() - startedAt });
           if (!step.optional) return { pipeline: spec.name, bundleId: bundle.id, ok: false, results };
           continue;
         }
@@ -111,11 +117,11 @@ export class PipelineRunner {
         if (out && typeof out === 'object') {
           Object.assign(ctx.state, out);
         }
-        results.push({ tool: step.tool, ok: true, output: out, durationMs: Date.now() - startedAt });
+        push({ tool: step.tool, ok: true, output: out, durationMs: Date.now() - startedAt });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         ctx.logger.error(`  ${tool.name} failed: ${msg}`);
-        results.push({ tool: step.tool, ok: false, error: msg, durationMs: Date.now() - startedAt });
+        push({ tool: step.tool, ok: false, error: msg, durationMs: Date.now() - startedAt });
         if (!step.optional) return { pipeline: spec.name, bundleId: bundle.id, ok: false, results };
       }
     }

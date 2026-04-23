@@ -40,11 +40,16 @@ export const config = {
   audio: {
     minBitrateKbps: optionalInt('MIN_AUDIO_BITRATE_KBPS', 64),
   },
+  housekeeping: {
+    renderLogsRetentionDays: optionalInt('RENDER_LOGS_RETENTION_DAYS', 30),
+  },
   paths: {
     projectRoot: resolve(__dirname, '..'),
     binDir: resolve(__dirname, '..', 'bin'),
     tmpDir: resolve(__dirname, '..', 'tmp'),
     assetsDir: resolve(__dirname, '..', 'assets'),
+    dataDir: resolve(__dirname, '..', 'data'),
+    renderLogsDir: resolve(__dirname, '..', 'data', 'render-logs'),
   },
 };
 

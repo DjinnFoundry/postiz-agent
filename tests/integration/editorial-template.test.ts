@@ -117,4 +117,38 @@ describe('editorial.mjs theme-specific markers', () => {
     expect(html).toContain('drop-cap');
     expect(html).not.toContain('border: 4px double');
   });
+
+  it('medieval-manuscript emits SVG corner ornaments with the accent color', () => {
+    const catalog = loadCatalog();
+    const treatment = catalog.treatments.find(t => t.id === 'medieval-manuscript')!;
+    const palette = catalog.palettes.find(p => p.id === treatment.palettes[0])!;
+    const { html } = runEditorial(payloadFor('medieval-manuscript', ASPECTS[0]));
+    expect(html).toContain('corner-ornament');
+    expect(html).toContain('corner-ornament corner-ornament-tl');
+    expect(html).toContain('corner-ornament corner-ornament-tr');
+    expect(html).toContain('corner-ornament corner-ornament-bl');
+    expect(html).toContain('corner-ornament corner-ornament-br');
+    expect(html).toContain('<svg');
+    expect(html).toContain(palette.accent);
+  });
+
+  it('mythic-scroll emits SVG scroll borders with laurel pattern', () => {
+    const catalog = loadCatalog();
+    const treatment = catalog.treatments.find(t => t.id === 'mythic-scroll')!;
+    const palette = catalog.palettes.find(p => p.id === treatment.palettes[0])!;
+    const { html } = runEditorial(payloadFor('mythic-scroll', ASPECTS[0]));
+    expect(html).toContain('scroll-border');
+    expect(html).toContain('scroll-border scroll-border-top');
+    expect(html).toContain('scroll-border scroll-border-bottom');
+    expect(html).toContain('<pattern');
+    expect(html).toContain(palette.accent);
+  });
+
+  it('non-ornamental treatments do not emit corner ornaments or scroll borders', () => {
+    for (const id of ['hero-display', 'midnight', 'rose-stamp', 'academic-dropcap', 'big-stat', 'storybook-pop', 'crayon-doodle', 'bubble-pastel', 'epic-cinematic', 'terminal-crt']) {
+      const { html } = runEditorial(payloadFor(id, ASPECTS[0]));
+      expect(html, `treatment=${id}`).not.toContain('corner-ornament');
+      expect(html, `treatment=${id}`).not.toContain('scroll-border');
+    }
+  });
 });

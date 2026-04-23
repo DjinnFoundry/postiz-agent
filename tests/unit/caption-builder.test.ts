@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildCaption, extractTeaser, taglineForRecipient, deriveHashtags } from '../../src/copy/caption-builder.js';
+import { buildCaption, extractTeaser, taglineForRecipient } from '../../src/copy/caption-builder.js';
+import { deriveHashtags } from '../../src/copy/hashtags.js';
 import type { ContentBundle } from '../../src/core/content-bundle.js';
 
 const base: ContentBundle = {
@@ -159,6 +160,59 @@ describe('deriveHashtags', () => {
   it('normalises accented mood values', () => {
     const b = { ...base, theme: { mood: 'educación' } };
     expect(deriveHashtags(b)).toContain('educacion');
+  });
+});
+
+describe('buildCaption: multi-locale', () => {
+  const enBundle: ContentBundle = {
+    id: 'dragon-marcos-en',
+    kind: 'audio-story',
+    text: {
+      title: 'The curious dragon',
+      body: 'Marcos was walking through the forest when he heard a strange noise. Behind a tree, he found a little dragon who could not breathe fire.',
+    },
+    locale: 'en-US',
+    theme: { mood: 'fantasy' },
+    recipient: { name: 'Marcos', age: 6, shareConsent: 'first-name-only' },
+  };
+
+  it('Instagram EN caption uses EN base hashtags', () => {
+    const c = buildCaption({ bundle: enBundle, platform: 'instagram' });
+    expect(c).toContain('#kidsaudio');
+    expect(c).toContain('#bedtimestories');
+    expect(c).not.toContain('#audiocuentos');
+  });
+
+  it('Instagram EN caption picks a CTA from the EN catalog', async () => {
+    const { listCtas } = await import('../../src/copy/ctas.js');
+    const c = buildCaption({ bundle: enBundle, platform: 'instagram' });
+    const enTexts = listCtas('instagram', 'en').map(v => v.text);
+    expect(enTexts.some(t => c.includes(t))).toBe(true);
+  });
+
+  it('X EN caption stays under 280 and includes EN hashtags', () => {
+    const c = buildCaption({ bundle: enBundle, platform: 'x' });
+    expect(c.length).toBeLessThanOrEqual(280);
+    expect(c).toContain('#kidsaudio');
+  });
+
+  it('TikTok EN caption includes EN hashtags', () => {
+    const c = buildCaption({ bundle: enBundle, platform: 'tiktok' });
+    expect(c).toContain('#kidsaudio');
+  });
+
+  it('ES bundle (es-ES) still produces ES hashtags and ES CTAs', async () => {
+    const { listCtas } = await import('../../src/copy/ctas.js');
+    const c = buildCaption({ bundle: base, platform: 'instagram' });
+    expect(c).toContain('#audiocuentos');
+    const esTexts = listCtas('instagram', 'es').map(v => v.text);
+    expect(esTexts.some(t => c.includes(t))).toBe(true);
+  });
+
+  it('unknown locale falls back to the catalog fallback (ES)', () => {
+    const frBundle: ContentBundle = { ...base, locale: 'fr-FR' };
+    const c = buildCaption({ bundle: frBundle, platform: 'instagram' });
+    expect(c).toContain('#audiocuentos');
   });
 });
 

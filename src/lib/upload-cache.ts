@@ -86,6 +86,26 @@ export class UploadCache {
     return dropped;
   }
 
+  countStale(): number {
+    const file = this.readFile();
+    const cutoff = this.now().getTime() - this.ttlMs;
+    let stale = 0;
+    for (const entry of Object.values(file.entries)) {
+      const t = Date.parse(entry.uploadedAt);
+      if (!Number.isFinite(t) || t < cutoff) stale++;
+    }
+    return stale;
+  }
+
+  summarize(): { count: number; oldestUploadedAt: string | null } {
+    const file = this.readFile();
+    const stamps = Object.values(file.entries).map(e => e.uploadedAt).filter(Boolean).sort();
+    return {
+      count: Object.keys(file.entries).length,
+      oldestUploadedAt: stamps[0] ?? null,
+    };
+  }
+
   private readFile(): CacheFile {
     if (!existsSync(this.cachePath)) return { version: 1, entries: {} };
     try {

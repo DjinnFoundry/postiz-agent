@@ -135,6 +135,56 @@ export function renderPartRibbon(payload) {
   return `<div class="part-ribbon">PARTE ${idx} / ${total}</div>`;
 }
 
+export function renderCornerOrnaments({ accent, size = 180 }) {
+  const svg = (cls) => `<div class="corner-ornament ${cls}" style="width:${size}px;height:${size}px;">`
+    + `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">`
+    + `<g fill="none" stroke="${accent}" stroke-width="1.6" stroke-linecap="round" opacity="0.65">`
+    + `<path d="M 6 6 L 6 44"/>`
+    + `<path d="M 6 6 L 44 6"/>`
+    + `<path d="M 6 22 C 18 22, 22 18, 22 6"/>`
+    + `<path d="M 10 10 C 28 12, 40 22, 42 42"/>`
+    + `<path d="M 14 6 C 16 12, 20 14, 26 14"/>`
+    + `<path d="M 6 14 C 12 16, 14 20, 14 26"/>`
+    + `<circle cx="22" cy="22" r="2.2" fill="${accent}" stroke="none"/>`
+    + `<circle cx="34" cy="10" r="1.4" fill="${accent}" stroke="none"/>`
+    + `<circle cx="10" cy="34" r="1.4" fill="${accent}" stroke="none"/>`
+    + `</g></svg></div>`;
+  return [
+    svg('corner-ornament-tl'),
+    svg('corner-ornament-tr'),
+    svg('corner-ornament-bl'),
+    svg('corner-ornament-br'),
+  ].join('');
+}
+
+export function renderScrollBorders({ accent, width, height: _height }) {
+  const patternId = 'laurel-pattern';
+  const bandHeight = 72;
+  const pattern = `<svg class="scroll-border-svg" viewBox="0 0 ${width} ${bandHeight}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">`
+    + `<defs>`
+    + `<pattern id="${patternId}" x="0" y="0" width="120" height="${bandHeight}" patternUnits="userSpaceOnUse">`
+    + `<g fill="none" stroke="${accent}" stroke-width="1.5" stroke-linecap="round" opacity="0.7">`
+    + `<path d="M 0 36 L 120 36"/>`
+    + `<path d="M 10 36 C 18 20, 34 20, 42 36"/>`
+    + `<path d="M 42 36 C 50 52, 66 52, 74 36"/>`
+    + `<path d="M 74 36 C 82 20, 98 20, 106 36"/>`
+    + `<circle cx="10" cy="36" r="2.4" fill="${accent}" stroke="none"/>`
+    + `<circle cx="42" cy="36" r="2.4" fill="${accent}" stroke="none"/>`
+    + `<circle cx="74" cy="36" r="2.4" fill="${accent}" stroke="none"/>`
+    + `<circle cx="106" cy="36" r="2.4" fill="${accent}" stroke="none"/>`
+    + `<path d="M 26 28 L 26 44"/>`
+    + `<path d="M 58 28 L 58 44"/>`
+    + `<path d="M 90 28 L 90 44"/>`
+    + `</g>`
+    + `</pattern>`
+    + `</defs>`
+    + `<rect x="0" y="0" width="${width}" height="${bandHeight}" fill="url(#${patternId})"/>`
+    + `</svg>`;
+  const top = `<div class="scroll-border scroll-border-top" style="height:${bandHeight}px;">${pattern}</div>`;
+  const bottom = `<div class="scroll-border scroll-border-bottom" style="height:${bandHeight}px;">${pattern}</div>`;
+  return top + bottom;
+}
+
 /** Read story payload from stdin as a single JSON blob. */
 export async function readStoryFromStdin() {
   const chunks = [];

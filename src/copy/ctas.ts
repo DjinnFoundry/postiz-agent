@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import ctasData from './ctas.json' with { type: 'json' };
+import { primaryLocale } from './hashtags.js';
 import type { Platform } from '../types.js';
 
 export interface CtaVariant {
@@ -7,26 +8,42 @@ export interface CtaVariant {
   text: string;
 }
 
+interface CtaLocaleEntry {
+  x?: CtaVariant[];
+  tiktok?: CtaVariant[];
+  instagram?: CtaVariant[];
+  youtube?: CtaVariant[];
+  [platform: string]: CtaVariant[] | undefined;
+}
+
 interface CtaFile {
   version: number;
-  variants: Record<string, CtaVariant[]>;
+  fallback: string;
+  locales: Record<string, CtaLocaleEntry>;
 }
 
 const DATA = ctasData as CtaFile;
 
-export function listCtas(platform: Platform): CtaVariant[] {
-  return DATA.variants[platform] ?? [];
+function resolveEffectiveLocale(locale: string | undefined): string {
+  const primary = primaryLocale(locale ?? DATA.fallback);
+  return DATA.locales[primary] ? primary : DATA.fallback;
+}
+
+export function listCtas(platform: Platform, locale?: string): CtaVariant[] {
+  const effective = resolveEffectiveLocale(locale);
+  return DATA.locales[effective]?.[platform] ?? [];
 }
 
 /**
- * Deterministic CTA selection for a given (platform, bundleId). The same pair
- * always resolves to the same variant id, so retries and re-runs render the
- * same caption. Returns null for platforms without CTAs (e.g. spotify).
+ * Deterministic CTA selection for a given (platform, bundleId, locale). The
+ * same triple always resolves to the same variant id, so retries and re-runs
+ * render the same caption. Returns null for platforms without CTAs (e.g. spotify).
  */
-export function selectCta(platform: Platform, bundleId: string): CtaVariant | null {
-  const variants = listCtas(platform);
+export function selectCta(platform: Platform, bundleId: string, locale?: string): CtaVariant | null {
+  const effective = resolveEffectiveLocale(locale);
+  const variants = DATA.locales[effective]?.[platform] ?? [];
   if (variants.length === 0) return null;
-  const n = hashToInt(`${platform}:${bundleId}`);
+  const n = hashToInt(`${platform}:${effective}:${bundleId}`);
   return variants[n % variants.length];
 }
 

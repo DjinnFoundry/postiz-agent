@@ -7,10 +7,9 @@ import { SpotifyRssBuilder } from './platforms/spotify-rss.js';
 import { DecisionLog } from './decisions/log.js';
 import { PostizClient } from './platforms/postiz.js';
 import { config } from './config.js';
-import { run } from './lib/process.js';
 import { validateSlug } from './lib/slug.js';
 import { assertSafeBundlePath } from './lib/safe-path.js';
-import { listCandidates, selectNextStory } from './dispatch.js';
+import { listCandidates, selectNextStory, type StuckSlugInfo } from './dispatch.js';
 import { AudioKidsAdapter } from './adapters/audiokids.js';
 import { PipelineRunner, PipelineSpecSchema, type PipelineSpec } from './core/pipeline.js';
 import { createDefaultRegistry } from './tools/index.js';
@@ -19,6 +18,7 @@ import { ContentBundleSchema } from './core/content-bundle.js';
 import { PlatformSchema, type Platform } from './types.js';
 import { runDoctor, formatDoctorReport } from './cli/doctor.js';
 import { runStats, formatStatsReport } from './cli/stats.js';
+import { runStatus, formatStatusReport } from './cli/status.js';
 import { runCtaAb, formatCtaAbReport } from './cli/cta-ab.js';
 import { listThemes, describeTheme, formatThemesList, formatThemeDescription } from './cli/themes.js';
 import { generateGallery, formatGalleryResult, type GalleryAspect } from './cli/gallery.js';
@@ -181,6 +181,7 @@ program
   .option('-p, --platform <platform>', 'filter by platform (x, tiktok, instagram, youtube, spotify)')
   .option('--run-id <uuid>', 'filter by the runId returned by a specific publish() call')
   .option('--pretty', 'pretty-print with 2-space indent', false)
+  .option('--json', 'force JSON output (default for non-stuck queries; tabular for --stuck)', false)
   .option('--stuck', 'list slugs currently blocked by repeated failures or active backoff', false)
   .option('--reset-attempts <slug>', 'record a reset marker so <slug> is no longer considered stuck')
   .addHelpText('after', `
@@ -230,8 +231,13 @@ Examples:
       const platforms = (Object.values(PlatformSchema.enum)) as Platform[];
       const { findStuckSlugs } = await import('./dispatch.js');
       const stuck = findStuckSlugs(all, platforms);
-      if (opts.pretty) console.log(JSON.stringify(stuck, null, 2));
-      else process.stdout.write(JSON.stringify(stuck) + '\n');
+      if (opts.json) {
+        process.stdout.write(JSON.stringify(stuck) + '\n');
+      } else if (opts.pretty) {
+        console.log(JSON.stringify(stuck, null, 2));
+      } else {
+        console.log(formatStuckTable(stuck));
+      }
       return;
     }
 
@@ -246,17 +252,18 @@ program.commands.find(c => c.name() === 'decisions')!
   .description('Force-rotate the active decision log to a timestamped archive')
   .option('--force', 'rotate even if the active file has not reached the size threshold', false)
   .option('--json', 'emit machine-readable JSON', false)
-  .action((opts: { force?: boolean; json?: boolean }) => {
+  .action(function (this: Command, opts: { force?: boolean; json?: boolean }) {
+    const json = opts.json || this.optsWithGlobals().json;
     const log = new DecisionLog();
     if (!opts.force && !log.shouldRotate()) {
       const payload = { rotated: false, reason: 'under threshold; pass --force to rotate anyway' };
-      if (opts.json) process.stdout.write(JSON.stringify(payload) + '\n');
+      if (json) process.stdout.write(JSON.stringify(payload) + '\n');
       else console.log(payload.reason);
       return;
     }
     const info = log.rotate();
     const payload = { rotated: Boolean(info.rotatedTo), rotatedTo: info.rotatedTo, bytes: info.bytes };
-    if (opts.json) process.stdout.write(JSON.stringify(payload) + '\n');
+    if (json) process.stdout.write(JSON.stringify(payload) + '\n');
     else if (payload.rotated) console.log(`rotated → ${info.rotatedTo} (${info.bytes} bytes)`);
     else console.log('no active log to rotate');
   });
@@ -265,10 +272,11 @@ program.commands.find(c => c.name() === 'decisions')!
   .command('archives')
   .description('List rotated decision-log archives with their sizes and date ranges')
   .option('--json', 'emit machine-readable JSON', false)
-  .action((opts: { json?: boolean }) => {
+  .action(function (this: Command, opts: { json?: boolean }) {
+    const json = opts.json || this.optsWithGlobals().json;
     const log = new DecisionLog();
     const archives = log.listArchives();
-    if (opts.json) {
+    if (json) {
       process.stdout.write(JSON.stringify(archives) + '\n');
       return;
     }
@@ -299,18 +307,12 @@ Exit codes:
   1 → at least one required check failed, OR any warning fired with --strict
 `)
   .action(async (opts) => {
-    const checks = await runStatusChecks();
-    if (opts.json) {
-      process.stdout.write(JSON.stringify(checks, null, 2) + '\n');
-    } else {
-      for (const c of checks) {
-        const mark = c.ok ? '✓' : (c.warning ? '⚠' : '✗');
-        const hint = c.detail ? `  ${c.detail}` : '';
-        console.log(`${mark} ${c.label}${hint}`);
-      }
-    }
-    const failedRequired = checks.filter(c => c.required && !c.ok);
-    const warnings = checks.filter(c => !c.ok && c.warning);
+    const report = await runStatus();
+    if (opts.json) process.stdout.write(formatStatusReport(report, 'json') + '\n');
+    else console.log(formatStatusReport(report, 'human'));
+
+    const failedRequired = report.deps.filter(c => c.required && !c.ok);
+    const warnings = report.deps.filter(c => !c.ok && c.warning);
     if (failedRequired.length > 0) process.exit(1);
     if (opts.strict && warnings.length > 0) process.exit(1);
     process.exit(0);
@@ -466,103 +468,26 @@ function parsePlatforms(csv: string): Platform[] {
     .map(p => PlatformSchema.parse(p));
 }
 
-interface Check { label: string; ok: boolean; detail?: string; required: boolean; warning?: boolean; }
-
-async function runStatusChecks(): Promise<Check[]> {
-  const checks: Check[] = [];
-
-  checks.push(await binCheck('ffmpeg', '-version', true));
-  checks.push(await binCheck('ffprobe', '-version', true));
-  checks.push(await binCheck('whisper', '--help', false));
-  checks.push(await binCheck('npx', '--version', true));
-
-  const akDir = config.audiokids.outputDir;
-  checks.push({
-    label: `AudioKids output dir`,
-    ok: existsSync(akDir),
-    detail: akDir,
-    required: true,
-  });
-
-  try {
-    const { accessSync, constants } = await import('node:fs');
-    accessSync(config.audiokids.outputDir, constants.R_OK);
-    checks.push({ label: 'AudioKids output dir readable', ok: true, required: true });
-  } catch (err) {
-    checks.push({ label: 'AudioKids output dir readable', ok: false, detail: String(err), required: true });
-  }
-
-  try {
-    const res = await fetch(`${config.postiz.apiUrl.replace(/\/public\/v1$/, '')}/`, {
-      method: 'GET',
-      signal: AbortSignal.timeout(15000),
-    });
-    checks.push({
-      label: `Postiz API reachable`,
-      ok: true,
-      detail: `${config.postiz.apiUrl} (HTTP ${res.status})`,
-      required: false,
-    });
-  } catch (err) {
-    checks.push({
-      label: `Postiz API reachable`,
-      ok: false,
-      detail: `${config.postiz.apiUrl} · ${err instanceof Error ? err.message : err}`,
-      required: false,
-    });
-  }
-
-  checks.push({
-    label: 'POSTIZ_API_KEY set',
-    ok: Boolean(config.postiz.apiKey),
-    detail: config.postiz.apiKey ? 'present' : 'missing in .env',
-    required: false,
-  });
-
-  checks.push({
-    label: 'YouTubeCLI project path',
-    ok: existsSync(config.youtubecli.path),
-    detail: config.youtubecli.path,
-    required: false,
-  });
-
-  // Postiz integration health — warn on disabled or missing target-platform connections.
-  if (config.postiz.apiKey) {
-    try {
-      const integrations = await new PostizClient().listIntegrations();
-      const wanted: Array<'x'|'tiktok'|'instagram'|'youtube'> = ['x', 'tiktok', 'instagram', 'youtube'];
-      const reconnectUrl = config.postiz.apiUrl.replace(/\/public\/v1$/, '');
-      for (const p of wanted) {
-        const match = integrations.find(i => i.providerIdentifier === p);
-        if (!match) {
-          checks.push({ label: `${p} integration`, ok: false, detail: `not connected — connect at ${reconnectUrl}`, required: false, warning: true });
-        } else if (match.disabled) {
-          checks.push({ label: `${p} integration`, ok: false, detail: `${match.name} disabled — reconnect at ${reconnectUrl}`, required: false, warning: true });
-        } else {
-          checks.push({ label: `${p} integration`, ok: true, detail: match.name, required: false });
-        }
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      checks.push({ label: 'Postiz integrations', ok: false, detail: `could not query: ${msg}`, required: false, warning: true });
-    }
-  }
-
-  return checks;
+function formatStuckTable(rows: StuckSlugInfo[]): string {
+  if (rows.length === 0) return 'no stuck slugs';
+  const headers = ['slug', 'platform', 'reason', 'remediation', 'next-eligible-at'];
+  const body = rows.map(r => [
+    truncate(r.slug, 24),
+    truncate(r.platform, 10),
+    truncate(r.reason, 28),
+    truncate(r.lastRemediation?.action ?? '', 20),
+    truncate(r.nextEligibleAt ?? '', 25),
+  ]);
+  const widths = headers.map((h, i) => Math.max(h.length, ...body.map(row => row[i].length)));
+  const pad = (cells: string[]) => cells.map((c, i) => c.padEnd(widths[i])).join('  ');
+  const sep = widths.map(w => '─'.repeat(w)).join('  ');
+  const out = [pad(headers), sep, ...body.map(pad)];
+  return out.join('\n');
 }
 
-async function binCheck(cmd: string, testArg: string, required: boolean): Promise<Check> {
-  try {
-    await run(cmd, [testArg]);
-    return { label: `${cmd} installed`, ok: true, required };
-  } catch (err) {
-    return {
-      label: `${cmd} installed`,
-      ok: false,
-      detail: err instanceof Error ? err.message.split('\n')[0] : String(err),
-      required,
-    };
-  }
+function truncate(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return s.slice(0, Math.max(0, max - 1)) + '…';
 }
 
 // ─────────────────────────── copy preview ───────────────────────────
@@ -583,6 +508,23 @@ program.commands.find(c => c.name() === 'copy')!
   .option('-p, --platform <platform>', 'which platform to preview (default: all)')
   .option('--json', 'emit machine-readable JSON', false)
   .action(async (opts: { id?: string; bundleFile?: string; platform?: string; json?: boolean }) => {
+    if (!opts.id && !opts.bundleFile) {
+      console.log([
+        'usage: postiz-agent copy preview --id <slug>',
+        '   or: postiz-agent copy preview --bundle-file <path>',
+        '',
+        'Options:',
+        '  --id <slug>            AudioKids story slug (loaded via adapter)',
+        '  --bundle-file <path>   path to a JSON ContentBundle',
+        '  -p, --platform <p>     preview only one platform (default: x,tiktok,instagram,youtube)',
+        '  --json                 emit machine-readable JSON',
+        '',
+        'Examples:',
+        '  postiz-agent copy preview --id dragon-marcos',
+        '  postiz-agent copy preview --id dragon-marcos --platform instagram --json',
+      ].join('\n'));
+      process.exit(0);
+    }
     const { buildCaptionRich } = await import('./copy/caption-builder.js');
     const bundle = resolveBundle(opts);
     const platforms: Platform[] = opts.platform
@@ -609,14 +551,14 @@ program.commands.find(c => c.name() === 'copy')!
   });
 
 // ─────────────────────────── logs ───────────────────────────
-program
+const logsCmd = program
   .command('logs')
   .description('Inspect captured render stderr from data/render-logs (written when a HyperFrames render/lint fails)')
   .option('-s, --slug <slug>', 'filter by story slug')
   .option('-p, --platform <platform>', 'filter by platform')
   .option('--tail', 'show only the most recent matching log (default prints every match listing)', false)
   .action((opts: { slug?: string; platform?: string; tail?: boolean }) => {
-    const logDir = join(config.paths.projectRoot, 'data', 'render-logs');
+    const logDir = config.paths.renderLogsDir;
     if (!existsSync(logDir)) {
       console.log('no render logs yet');
       return;
@@ -637,6 +579,61 @@ program
     for (const f of files) {
       console.log(`${join(logDir, f)}`);
     }
+  });
+
+logsCmd
+  .command('prune')
+  .description('Delete render logs older than the retention window (default 30 days; env RENDER_LOGS_RETENTION_DAYS)')
+  .option('--older-than-days <n>', 'override retention window in days')
+  .option('--dry-run', 'report what would be deleted without removing files', false)
+  .option('--json', 'emit machine-readable JSON', false)
+  .addHelpText('after', `
+Examples:
+  postiz-agent logs prune --dry-run --json
+  postiz-agent logs prune --older-than-days 7
+`)
+  .action(async (opts: { olderThanDays?: string; dryRun?: boolean; json?: boolean }) => {
+    const { pruneRenderLogs } = await import('./cli/housekeeping.js');
+    const days = opts.olderThanDays ? Number.parseInt(opts.olderThanDays, 10) : undefined;
+    if (days !== undefined && (!Number.isFinite(days) || days < 0)) {
+      console.error(`invalid --older-than-days value: ${opts.olderThanDays}`);
+      process.exit(1);
+    }
+    const result = await pruneRenderLogs({ olderThanDays: days, dryRun: opts.dryRun });
+    if (opts.json) {
+      process.stdout.write(JSON.stringify(result) + '\n');
+    } else {
+      const verb = result.dryRun ? 'would remove' : 'removed';
+      console.log(`${verb} ${result.removed} log(s), kept ${result.kept}, freed ${result.bytesFreed} bytes from ${result.dir}`);
+    }
+    process.exit(0);
+  });
+
+// ─────────────────────────── cache ───────────────────────────
+const cacheCmd = program
+  .command('cache')
+  .description('Inspect and maintain the Postiz upload dedup cache (data/upload-cache.json)');
+
+cacheCmd
+  .command('prune')
+  .description('Drop upload-cache entries older than the TTL (default 7 days)')
+  .option('--dry-run', 'report what would be removed without writing', false)
+  .option('--json', 'emit machine-readable JSON', false)
+  .addHelpText('after', `
+Examples:
+  postiz-agent cache prune --dry-run --json
+  postiz-agent cache prune
+`)
+  .action(async (opts: { dryRun?: boolean; json?: boolean }) => {
+    const { pruneUploadCache } = await import('./cli/housekeeping.js');
+    const result = pruneUploadCache({ dryRun: opts.dryRun });
+    if (opts.json) {
+      process.stdout.write(JSON.stringify(result) + '\n');
+    } else {
+      const verb = result.dryRun ? 'would remove' : 'removed';
+      console.log(`${verb} ${result.removed} entry(ies), kept ${result.kept}`);
+    }
+    process.exit(0);
   });
 
 // ─────────────────────────── tools ───────────────────────────
@@ -745,8 +742,9 @@ program
   .option('--work-dir <path>', 'writable workspace for the pipeline', '')
   .option('--dry-run', 'hint to every step not to perform side effects', false)
   .option('--json', 'emit the run result as JSON on stdout (logger silenced)', false)
+  .option('--stream', 'emit NDJSON (one JSON object per step as it completes, plus a final summary)', false)
   .action(async (specPath: string, opts: {
-    id?: string; bundleFile?: string; workDir?: string; dryRun?: boolean; json?: boolean;
+    id?: string; bundleFile?: string; workDir?: string; dryRun?: boolean; json?: boolean; stream?: boolean;
   }) => {
     if (!existsSync(specPath)) {
       console.error(`pipeline spec not found: ${specPath}`);
@@ -757,12 +755,24 @@ program
     const bundle = resolveBundle(opts);
     const workDir = opts.workDir?.trim() || join(config.paths.tmpDir, bundle.id);
     const runner = new PipelineRunner(createDefaultRegistry());
+    const silent = Boolean(opts.json || opts.stream);
     const result = await runner.run(spec, bundle, {
       workDir,
       dryRun: opts.dryRun,
-      logger: opts.json ? silentLogger : consoleLogger,
+      logger: silent ? silentLogger : consoleLogger,
+      onStepComplete: opts.stream
+        ? (step) => process.stdout.write(JSON.stringify({ type: 'step', ...step }) + '\n')
+        : undefined,
     });
-    if (opts.json) {
+    if (opts.stream) {
+      process.stdout.write(JSON.stringify({
+        type: 'summary',
+        pipeline: result.pipeline,
+        bundleId: result.bundleId,
+        ok: result.ok,
+        stepCount: result.results.length,
+      }) + '\n');
+    } else if (opts.json) {
       process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     } else {
       console.log(`\npipeline ${spec.name} → ${result.ok ? 'OK' : 'FAILED'}`);

@@ -45,7 +45,7 @@ export interface BuildResult {
 
 const HF_PROJECT = resolve(config.paths.projectRoot, 'hyperframes');
 const HF_WORK_ROOT = join(HF_PROJECT, '.work');
-const RENDER_LOG_DIR = resolve(config.paths.projectRoot, 'data', 'render-logs');
+const RENDER_LOG_DIR = config.paths.renderLogsDir;
 /** Files copied into each per-render workspace so `npx hyperframes render` sees a complete project. */
 const STATIC_PROJECT_ENTRIES = ['hyperframes.json', 'meta.json', 'templates'] as const;
 /** Optional entries copied only if present in the project root. Fonts are bulky (MB) and */

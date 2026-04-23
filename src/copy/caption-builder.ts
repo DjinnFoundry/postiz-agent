@@ -1,6 +1,7 @@
 import type { ContentBundle, Recipient, RecipientShareConsent } from '../core/content-bundle.js';
 import type { Platform } from '../types.js';
 import { selectCta, type CtaVariant } from './ctas.js';
+import { deriveHashtags, primaryLocale } from './hashtags.js';
 
 /**
  * Builds the social caption for every platform from a ContentBundle. Pure:
@@ -26,8 +27,6 @@ export interface CaptionBuildOptions {
   /** Override the hashtag set. Default derives from mood + content. */
   hashtags?: string[];
 }
-
-const HASHTAG_BASE = ['audiocuentos', 'cuentosinfantiles'];
 
 /** Hard caps on the final caption length per platform, with some slack. */
 const LENGTH_CAP: Record<Platform, number> = {
@@ -63,7 +62,7 @@ export function buildCaptionRich(opts: CaptionBuildOptions): CaptionBuildResult 
   if (opts.cta != null) {
     ctaText = opts.cta.trim();
   } else {
-    ctaVariant = selectCta(platform, bundle.id);
+    ctaVariant = selectCta(platform, bundle.id, primaryLocale(bundle.locale));
     ctaText = (ctaVariant?.text ?? '').trim();
   }
   const partSuffix = opts.part ? ` · Parte ${opts.part.index} de ${opts.part.total}` : '';
@@ -218,22 +217,6 @@ export function taglineForRecipient(recipient?: Recipient): string | null {
     return `${first}, ${recipient.age} años${interestStr}`;
   }
   return `${first}${interestStr}`;
-}
-
-export function deriveHashtags(bundle: ContentBundle): string[] {
-  const base = [...HASHTAG_BASE];
-  const mood = bundle.theme?.mood;
-  if (mood) base.push(normalizeHashtag(mood));
-  return dedupe(base);
-}
-
-function normalizeHashtag(s: string): string {
-  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '');
-}
-
-function dedupe(arr: string[]): string[] {
-  const seen = new Set<string>();
-  return arr.filter(x => (seen.has(x) ? false : (seen.add(x), true)));
 }
 
 /**

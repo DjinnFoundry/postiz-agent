@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "fallback": "es",
+  "locales": {
+    "es": {
+      "base": ["audiocuentos", "cuentosinfantiles"]
+    },
+    "en": {
+      "base": ["kidsaudio", "bedtimestories"]
+    }
+  }
+}

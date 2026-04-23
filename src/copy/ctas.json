@@ -1,36 +1,69 @@
 {
-  "version": 1,
-  "variants": {
-    "x": [
-      { "id": "x-try",      "text": "Genera el tuyo en audiokids.app" },
-      { "id": "x-gift",     "text": "¿Para tu peque? → audiokids.app" },
-      { "id": "x-minute",   "text": "Cuentos a medida en un minuto · audiokids.app" },
-      { "id": "x-kids",     "text": "Tus peques, protagonistas. audiokids.app" },
-      { "id": "x-link",     "text": "audiokids.app · un cuento único, cada día" }
-    ],
-    "tiktok": [
-      { "id": "tk-ask",     "text": "Tú pides, AudioKids escribe 🎧" },
-      { "id": "tk-about",   "text": "Un cuento con tu peque de protagonista 🎧" },
-      { "id": "tk-try",     "text": "Pruébalo en audiokids.app 🎧" },
-      { "id": "tk-minute",  "text": "En 1 minuto lo tienes. audiokids.app" },
-      { "id": "tk-love",    "text": "Hecho con cariño en audiokids.app ✨" },
-      { "id": "tk-gift",    "text": "El regalo favorito de los peques · audiokids.app" }
-    ],
-    "instagram": [
-      { "id": "ig-bio",     "text": "¿Quieres uno para tu peque? Link en bio ✨" },
-      { "id": "ig-made",    "text": "Hecho con AudioKids. Prueba el tuyo → link en bio" },
-      { "id": "ig-hero",    "text": "Convierte a tu peque en protagonista. Link en bio 🎧" },
-      { "id": "ig-night",   "text": "Cuentos de buenas noches, hechos a medida. Link en bio" },
-      { "id": "ig-share",   "text": "Comparte con otra familia · link en bio ✨" },
-      { "id": "ig-free",    "text": "Primer cuento gratis en AudioKids · link en bio" },
-      { "id": "ig-special", "text": "Un cuento único para un peque único. Link en bio 💫" }
-    ],
-    "youtube": [
-      { "id": "yt-try",     "text": "Genera un cuento para tu peque en audiokids.app" },
-      { "id": "yt-channel", "text": "Suscríbete para un cuento nuevo cada día · audiokids.app" },
-      { "id": "yt-about",   "text": "Aprende más en audiokids.app" },
-      { "id": "yt-share",   "text": "Si os ha gustado, compartidlo con otra familia · audiokids.app" },
-      { "id": "yt-made",    "text": "Este cuento fue hecho con AudioKids (audiokids.app)" }
-    ]
+  "version": 2,
+  "fallback": "es",
+  "locales": {
+    "es": {
+      "x": [
+        { "id": "x-try",      "text": "Genera el tuyo en audiokids.app" },
+        { "id": "x-gift",     "text": "¿Para tu peque? → audiokids.app" },
+        { "id": "x-minute",   "text": "Cuentos a medida en un minuto · audiokids.app" },
+        { "id": "x-kids",     "text": "Tus peques, protagonistas. audiokids.app" },
+        { "id": "x-link",     "text": "audiokids.app · un cuento único, cada día" }
+      ],
+      "tiktok": [
+        { "id": "tk-ask",     "text": "Tú pides, AudioKids escribe 🎧" },
+        { "id": "tk-about",   "text": "Un cuento con tu peque de protagonista 🎧" },
+        { "id": "tk-try",     "text": "Pruébalo en audiokids.app 🎧" },
+        { "id": "tk-minute",  "text": "En 1 minuto lo tienes. audiokids.app" },
+        { "id": "tk-love",    "text": "Hecho con cariño en audiokids.app ✨" },
+        { "id": "tk-gift",    "text": "El regalo favorito de los peques · audiokids.app" }
+      ],
+      "instagram": [
+        { "id": "ig-bio",     "text": "¿Quieres uno para tu peque? Link en bio ✨" },
+        { "id": "ig-made",    "text": "Hecho con AudioKids. Prueba el tuyo → link en bio" },
+        { "id": "ig-hero",    "text": "Convierte a tu peque en protagonista. Link en bio 🎧" },
+        { "id": "ig-night",   "text": "Cuentos de buenas noches, hechos a medida. Link en bio" },
+        { "id": "ig-share",   "text": "Comparte con otra familia · link en bio ✨" },
+        { "id": "ig-free",    "text": "Primer cuento gratis en AudioKids · link en bio" },
+        { "id": "ig-special", "text": "Un cuento único para un peque único. Link en bio 💫" }
+      ],
+      "youtube": [
+        { "id": "yt-try",     "text": "Genera un cuento para tu peque en audiokids.app" },
+        { "id": "yt-channel", "text": "Suscríbete para un cuento nuevo cada día · audiokids.app" },
+        { "id": "yt-about",   "text": "Aprende más en audiokids.app" },
+        { "id": "yt-share",   "text": "Si os ha gustado, compartidlo con otra familia · audiokids.app" },
+        { "id": "yt-made",    "text": "Este cuento fue hecho con AudioKids (audiokids.app)" }
+      ]
+    },
+    "en": {
+      "x": [
+        { "id": "en-x-try",    "text": "Generate yours at audiokids.app" },
+        { "id": "en-x-gift",   "text": "For your kid? → audiokids.app" },
+        { "id": "en-x-minute", "text": "Custom bedtime stories in a minute · audiokids.app" },
+        { "id": "en-x-kids",   "text": "Your kids, the heroes. audiokids.app" },
+        { "id": "en-x-link",   "text": "audiokids.app · a unique story, every day" }
+      ],
+      "tiktok": [
+        { "id": "en-tk-ask",    "text": "You ask, AudioKids writes 🎧" },
+        { "id": "en-tk-about",  "text": "A story with your kid as the hero 🎧" },
+        { "id": "en-tk-try",    "text": "Try it at audiokids.app 🎧" },
+        { "id": "en-tk-minute", "text": "Done in 1 minute. audiokids.app" },
+        { "id": "en-tk-love",   "text": "Crafted with love at audiokids.app ✨" }
+      ],
+      "instagram": [
+        { "id": "en-ig-bio",     "text": "Want one for your kid? Link in bio ✨" },
+        { "id": "en-ig-made",    "text": "Made with AudioKids. Try yours → link in bio" },
+        { "id": "en-ig-hero",    "text": "Turn your kid into the hero. Link in bio 🎧" },
+        { "id": "en-ig-night",   "text": "Custom bedtime stories. Link in bio" },
+        { "id": "en-ig-free",    "text": "First story free at AudioKids · link in bio" }
+      ],
+      "youtube": [
+        { "id": "en-yt-try",     "text": "Generate a story for your kid at audiokids.app" },
+        { "id": "en-yt-channel", "text": "Subscribe for a new story every day · audiokids.app" },
+        { "id": "en-yt-about",   "text": "Learn more at audiokids.app" },
+        { "id": "en-yt-share",   "text": "If you enjoyed it, share with another family · audiokids.app" },
+        { "id": "en-yt-made",    "text": "This story was made with AudioKids (audiokids.app)" }
+      ]
+    }
   }
 }

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { listCtas, selectCta } from '../../src/copy/ctas.js';
 import type { Platform } from '../../src/types.js';
 
-describe('CTA catalog integrity', () => {
+describe('CTA catalog integrity (default locale)', () => {
   for (const platform of ['x', 'tiktok', 'instagram', 'youtube'] as Platform[]) {
     it(`${platform} has >=5 variants`, () => {
       const v = listCtas(platform);
@@ -23,6 +23,31 @@ describe('CTA catalog integrity', () => {
 
   it('spotify returns no variants', () => {
     expect(listCtas('spotify')).toEqual([]);
+  });
+});
+
+describe('CTA catalog integrity (EN locale)', () => {
+  for (const platform of ['x', 'tiktok', 'instagram', 'youtube'] as Platform[]) {
+    it(`${platform} has >=5 EN variants`, () => {
+      const v = listCtas(platform, 'en');
+      expect(v.length).toBeGreaterThanOrEqual(5);
+      for (const c of v) {
+        expect(c.id).toBeTruthy();
+        expect(c.text.length).toBeGreaterThan(5);
+      }
+    });
+  }
+
+  it('EN variant ids are prefixed to avoid collision with ES ids', () => {
+    const enIg = listCtas('instagram', 'en').map(v => v.id);
+    const esIg = listCtas('instagram', 'es').map(v => v.id);
+    for (const id of enIg) expect(esIg).not.toContain(id);
+  });
+
+  it('unknown locale falls back to the catalog fallback locale', () => {
+    const fr = listCtas('instagram', 'fr');
+    const es = listCtas('instagram', 'es');
+    expect(fr.map(v => v.id)).toEqual(es.map(v => v.id));
   });
 });
 
@@ -59,6 +84,38 @@ describe('selectCta', () => {
     const tkIds = new Set(listCtas('tiktok').map(v => v.id));
     expect(igIds.has(ig!.id)).toBe(true);
     expect(tkIds.has(tk!.id)).toBe(true);
+  });
+
+  it('locale=en picks a variant from the EN catalog', () => {
+    const v = selectCta('instagram', 'dragon-marcos', 'en');
+    expect(v).not.toBeNull();
+    const enIds = new Set(listCtas('instagram', 'en').map(x => x.id));
+    expect(enIds.has(v!.id)).toBe(true);
+  });
+
+  it('locale=en and locale=es resolve within their own catalogs for the same bundleId', () => {
+    const es = selectCta('instagram', 'dragon-marcos', 'es');
+    const en = selectCta('instagram', 'dragon-marcos', 'en');
+    const esIds = new Set(listCtas('instagram', 'es').map(v => v.id));
+    const enIds = new Set(listCtas('instagram', 'en').map(v => v.id));
+    expect(esIds.has(es!.id)).toBe(true);
+    expect(enIds.has(en!.id)).toBe(true);
+  });
+
+  it('unknown locale falls back to the fallback catalog', () => {
+    const fr = selectCta('instagram', 'dragon-marcos', 'fr');
+    const es = selectCta('instagram', 'dragon-marcos', 'es');
+    expect(fr?.id).toBe(es?.id);
+  });
+
+  it('accepts BCP 47 tags (es-ES, en-US) and normalises to the primary subtag', () => {
+    const esES = selectCta('instagram', 'dragon-marcos', 'es-ES');
+    const es = selectCta('instagram', 'dragon-marcos', 'es');
+    expect(esES?.id).toBe(es?.id);
+
+    const enUS = selectCta('instagram', 'dragon-marcos', 'en-US');
+    const en = selectCta('instagram', 'dragon-marcos', 'en');
+    expect(enUS?.id).toBe(en?.id);
   });
 });
 

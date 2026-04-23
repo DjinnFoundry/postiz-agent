@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const ROOT = resolve(__dirname, '..', '..');
@@ -33,21 +33,36 @@ describe('CLI smoke: top-level --help', () => {
 });
 
 describe('CLI smoke: status --json', () => {
-  it('returns a well-formed check list', () => {
+  it('returns deps array + system panel with tool/treatment/decision counts', () => {
     const { stdout } = runCli(['status', '--json']);
-    const checks = JSON.parse(stdout);
-    expect(Array.isArray(checks)).toBe(true);
-    const labels = checks.map((c: { label: string }) => c.label);
+    const report = JSON.parse(stdout);
+    expect(report).toHaveProperty('generatedAt');
+    expect(Array.isArray(report.deps)).toBe(true);
+    const labels = report.deps.map((c: { label: string }) => c.label);
     expect(labels).toEqual(expect.arrayContaining([
       'ffmpeg installed',
       'ffprobe installed',
       'npx installed',
       'AudioKids output dir',
     ]));
-    for (const c of checks as Array<{ ok: boolean; required: boolean }>) {
+    for (const c of report.deps as Array<{ ok: boolean; required: boolean }>) {
       expect(typeof c.ok).toBe('boolean');
       expect(typeof c.required).toBe('boolean');
     }
+    expect(report).toHaveProperty('system');
+    expect(typeof report.system.tools).toBe('number');
+    expect(report.system.tools).toBeGreaterThan(0);
+    expect(typeof report.system.treatments).toBe('number');
+    expect(report.system.treatments).toBeGreaterThan(0);
+    expect(typeof report.system.decisions).toBe('number');
+    expect(typeof report.system.themeDecisions).toBe('number');
+    expect(report.system).toHaveProperty('uploads');
+    expect(typeof report.system.uploads.count).toBe('number');
+    expect(typeof report.system.stuckSlugs).toBe('number');
+    expect(report.system).toHaveProperty('successRate7d');
+    expect(typeof report.system.successRate7d.success).toBe('number');
+    expect(typeof report.system.successRate7d.failed).toBe('number');
+    expect(typeof report.system.successRate7d.rate).toBe('number');
   });
 });
 
@@ -232,6 +247,36 @@ describe('CLI smoke: tools call rejects unsafe --bundle-file', () => {
   });
 });
 
+describe('CLI smoke: logs prune --json --dry-run', () => {
+  it('returns a well-formed prune report without deleting', () => {
+    const { stdout, status } = runCli(['logs', 'prune', '--dry-run', '--json']);
+    expect(status).toBe(0);
+    const report = JSON.parse(stdout);
+    expect(report).toHaveProperty('removed');
+    expect(report).toHaveProperty('kept');
+    expect(report).toHaveProperty('bytesFreed');
+    expect(report).toHaveProperty('dryRun', true);
+    expect(report).toHaveProperty('olderThanDays');
+    expect(typeof report.removed).toBe('number');
+    expect(typeof report.kept).toBe('number');
+    expect(typeof report.bytesFreed).toBe('number');
+    expect(typeof report.olderThanDays).toBe('number');
+  });
+});
+
+describe('CLI smoke: cache prune --json --dry-run', () => {
+  it('returns a well-formed upload-cache prune report', () => {
+    const { stdout, status } = runCli(['cache', 'prune', '--dry-run', '--json']);
+    expect(status).toBe(0);
+    const report = JSON.parse(stdout);
+    expect(report).toHaveProperty('removed');
+    expect(report).toHaveProperty('kept');
+    expect(report).toHaveProperty('dryRun', true);
+    expect(typeof report.removed).toBe('number');
+    expect(typeof report.kept).toBe('number');
+  });
+});
+
 describe('CLI smoke: themes describe', () => {
   it('returns a descriptor with resolved palettes and fontPairing for a valid id', () => {
     const { stdout, status } = runCli(['themes', 'describe', 'hero-display', '--json']);
@@ -254,5 +299,84 @@ describe('CLI smoke: themes describe', () => {
     const { status, stderr, stdout } = runCli(['themes', 'describe', 'unknown-treatment-id']);
     expect(status).not.toBe(0);
     expect(stderr + stdout).toMatch(/unknown|not found|unknown-treatment-id/i);
+  });
+});
+
+describe('CLI smoke: decisions --stuck (human)', () => {
+  it('prints a table (or empty message) and never raw JSON when --json is omitted', () => {
+    const { stdout, status } = runCli(['decisions', '--stuck']);
+    expect(status).toBe(0);
+    const trimmed = stdout.trim();
+    expect(trimmed.startsWith('[')).toBe(false);
+    if (trimmed.length === 0 || /no stuck slugs/i.test(trimmed)) return;
+    expect(trimmed).toMatch(/slug/i);
+    expect(trimmed).toMatch(/platform/i);
+    expect(trimmed).toMatch(/reason/i);
+  });
+});
+
+describe('CLI smoke: decisions --stuck --json', () => {
+  it('still emits a JSON array when --json is passed', () => {
+    const { stdout, status } = runCli(['decisions', '--stuck', '--json']);
+    expect(status).toBe(0);
+    const parsed = JSON.parse(stdout);
+    expect(Array.isArray(parsed)).toBe(true);
+  });
+});
+
+describe('CLI smoke: copy preview without --id or --bundle-file', () => {
+  it('exits 0 and prints a usage hint instead of throwing', () => {
+    const { stdout, stderr, status } = runCli(['copy', 'preview']);
+    expect(status).toBe(0);
+    const text = stdout + stderr;
+    expect(text).toMatch(/--id|--bundle-file/);
+    expect(text).not.toMatch(/TypeError|at .*\.ts/);
+  });
+});
+
+describe('CLI smoke: run-pipeline --stream emits NDJSON per step', () => {
+  it('one JSON object per completed step, and a final summary line', () => {
+    const ROOT_LOCAL = resolve(__dirname, '..', '..');
+    const tmpDir = resolve(ROOT_LOCAL, 'tmp', 'stream-smoke');
+    mkdirSync(tmpDir, { recursive: true });
+
+    const bundlePath = resolve(tmpDir, 'smoke-bundle.json');
+    writeFileSync(bundlePath, JSON.stringify({
+      id: 'smoke-stream-bundle',
+      kind: 'text',
+      text: { title: 'Smoke', body: 'Érase una vez un prompt corto.' },
+      locale: 'es',
+    }), 'utf-8');
+
+    const specPath = resolve(tmpDir, 'smoke-pipeline.json');
+    writeFileSync(specPath, JSON.stringify({
+      name: 'smoke-stream',
+      version: '1.0.0',
+      steps: [
+        { tool: 'resolve-theme', args: { preview: true } },
+        { tool: 'resolve-theme', args: { preview: true } },
+      ],
+    }), 'utf-8');
+
+    const { stdout, status } = runCli([
+      'run-pipeline', specPath,
+      '--bundle-file', bundlePath,
+      '--stream',
+    ]);
+    expect([0, 1]).toContain(status);
+
+    const lines = stdout.split('\n').map(l => l.trim()).filter(Boolean);
+    expect(lines.length).toBeGreaterThanOrEqual(2);
+
+    const parsed = lines.map(l => {
+      try { return JSON.parse(l); } catch { return null; }
+    });
+    for (const p of parsed) {
+      expect(p).not.toBeNull();
+    }
+    const stepLines = parsed.filter((p): p is { type: string } => !!p && (p as { type?: string }).type === 'step');
+    expect(stepLines.length).toBeGreaterThanOrEqual(2);
+    const summaryLines = parsed.filter((p): p is { type: string } => !!p && (p as { type?: string }).type === 'summary');
+    expect(summaryLines.length).toBe(1);
   });
 });
