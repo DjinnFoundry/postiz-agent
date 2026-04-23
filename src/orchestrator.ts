@@ -1,9 +1,10 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { config } from './config.js';
 import { AudioKidsAdapter } from './adapters/audiokids.js';
 import { SubtitleGenerator } from './media/subtitles.js';
-import { getPublisher } from './platforms/registry.js';
+import { getPublisher as defaultGetPublisher } from './platforms/registry.js';
 import type { PlatformPublisher, PublishContext } from './platforms/base.js';
 import { DecisionLog } from './decisions/log.js';
 import { retry, isTransientError } from './lib/retry.js';
@@ -12,7 +13,7 @@ import { wasRecentlyPublished } from './idempotency.js';
 import { moderateWords } from './media/caption-moderation.js';
 import type { ContentBundle } from './core/content-bundle.js';
 import { classifyError } from './core/errors.js';
-import { preflightPlatform } from './core/preflight.js';
+import { preflightPlatform, type PreflightResult } from './core/preflight.js';
 import { platformOrigin } from './platforms/base.js';
 import type { CaptionStatus, Platform, PublishResult, WordEntry } from './types.js';
 
@@ -32,6 +33,15 @@ export interface PublishReport {
   results: PublishResult[];
   /** Set to true when whisper failed and --allow-no-captions was NOT passed (orchestrator aborted). */
   fatalCaptionFailure?: boolean;
+  /** UUID v4 minted at the start of this publish() call; shared by every decision log entry it emits. */
+  runId?: string;
+}
+
+export interface OrchestratorDeps {
+  adapter?: AudioKidsAdapter;
+  decisions?: DecisionLog;
+  getPublisher?: (platform: Platform) => PlatformPublisher;
+  preflight?: (bundle: ContentBundle, platform: Platform) => Promise<PreflightResult>;
 }
 
 /**
@@ -43,11 +53,21 @@ export interface PublishReport {
  * consumes ContentBundle exclusively.
  */
 export class Orchestrator {
-  private readonly adapter = new AudioKidsAdapter();
+  private readonly adapter: AudioKidsAdapter;
   private readonly subs = new SubtitleGenerator();
-  private readonly decisions = new DecisionLog();
+  private readonly decisions: DecisionLog;
+  private readonly getPublisher: (platform: Platform) => PlatformPublisher;
+  private readonly preflight: (bundle: ContentBundle, platform: Platform) => Promise<PreflightResult>;
+
+  constructor(deps: OrchestratorDeps = {}) {
+    this.adapter = deps.adapter ?? new AudioKidsAdapter();
+    this.decisions = deps.decisions ?? new DecisionLog();
+    this.getPublisher = deps.getPublisher ?? defaultGetPublisher;
+    this.preflight = deps.preflight ?? preflightPlatform;
+  }
 
   async publish(opts: PublishOptions): Promise<PublishReport> {
+    const runId = randomUUID();
     const bundle = this.adapter.loadBundle(opts.storySlug);
     const wordCount = (bundle.sourceMeta?.wordCount as number | undefined) ?? 0;
     const durationMin = (bundle.sourceMeta?.estimatedDurationMin as number | undefined) ?? 0;
@@ -83,7 +103,7 @@ export class Orchestrator {
         baseWarnings.push(`transcription failed: ${t.error}`);
         if (!opts.allowNoCaptions) {
           console.error(`\n✗ whisper transcription failed and --allow-no-captions was not passed; aborting.`);
-          return { slug: opts.storySlug, results: [], fatalCaptionFailure: true };
+          return { slug: opts.storySlug, results: [], fatalCaptionFailure: true, runId };
         }
       }
     }
@@ -93,7 +113,7 @@ export class Orchestrator {
     // guarantees every platform is recorded even if one explodes. The decisions
     // log uses async atomic appends, safe under concurrent writers.
     const settled = await Promise.allSettled(
-      opts.platforms.map(platform => this.publishPlatform(platform, opts, { bundle, workDir, words, dryRun: opts.dryRun }, captionStatus, baseWarnings)),
+      opts.platforms.map(platform => this.publishPlatform(platform, opts, { bundle, workDir, words, dryRun: opts.dryRun }, captionStatus, baseWarnings, runId)),
     );
 
     const results: PublishResult[] = settled.map((s, i) => {
@@ -103,7 +123,7 @@ export class Orchestrator {
       return { platform, success: false, error, timestamp: new Date().toISOString() };
     });
 
-    return { slug: opts.storySlug, results };
+    return { slug: opts.storySlug, results, runId };
   }
 
   private async publishPlatform(
@@ -112,13 +132,14 @@ export class Orchestrator {
     ctx: PublishContext,
     captionStatus: CaptionStatus,
     baseWarnings: string[],
+    runId: string,
   ): Promise<PublishResult> {
     console.log(`→ ${platform}: starting`);
 
     // Preflight: refuse early if this platform can't accept this bundle. Saves
     // 2-3 minutes of render time when the audio is too long, cover is missing,
     // or the target is spotify (RSS-only).
-    const pre = await preflightPlatform(ctx.bundle, platform);
+    const pre = await this.preflight(ctx.bundle, platform);
     if (!pre.ok) {
       const success = pre.kind === 'skip';
       const ts = new Date().toISOString();
@@ -139,6 +160,7 @@ export class Orchestrator {
         platform,
         reason: opts.reason ?? 'scheduled daily publication',
         result,
+        runId,
       });
       console.log(`  ${platform} preflight: ${pre.reason}`);
       return result;
@@ -165,12 +187,13 @@ export class Orchestrator {
           platform,
           reason: opts.reason ?? 'scheduled daily publication',
           result: skipped,
+          runId,
         });
         return skipped;
       }
     }
 
-    const publisher = getPublisher(platform);
+    const publisher = this.getPublisher(platform);
     const result = await this.publishWithRetry(publisher, ctx);
     const decorated: PublishResult = {
       ...result,
@@ -187,6 +210,7 @@ export class Orchestrator {
           platform,
           reason: opts.reason ?? 'scheduled daily publication',
           result: part,
+          runId,
         });
       }
     } else {
@@ -196,6 +220,7 @@ export class Orchestrator {
         platform,
         reason: opts.reason ?? 'scheduled daily publication',
         result: decorated,
+        runId,
       });
     }
 

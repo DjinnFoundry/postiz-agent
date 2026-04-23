@@ -124,4 +124,8 @@ export interface DecisionLogEntry {
   reason: string;
   result: PublishResult;
   createdAt: string;
+  /** Correlates every entry emitted by the same Orchestrator.publish() call. Optional
+   *  because historical entries predate the field; consumers treat its absence as
+   *  "unknown run" and do not group. */
+  runId?: string;
 }

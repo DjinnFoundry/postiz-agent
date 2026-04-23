@@ -48,6 +48,9 @@ const HF_WORK_ROOT = join(HF_PROJECT, '.work');
 const RENDER_LOG_DIR = resolve(config.paths.projectRoot, 'data', 'render-logs');
 /** Files copied into each per-render workspace so `npx hyperframes render` sees a complete project. */
 const STATIC_PROJECT_ENTRIES = ['hyperframes.json', 'meta.json', 'templates'] as const;
+/** Optional entries copied only if present in the project root. Fonts are bulky (MB) and */
+/** only exist after the operator has run `pnpm fetch-fonts`; absence falls back to CDN URLs. */
+const OPTIONAL_PROJECT_ENTRIES = ['assets/fonts'] as const;
 
 /**
  * Generates a slide-based video by driving the HyperFrames project.
@@ -119,6 +122,16 @@ export class SlideVideoBuilder {
       const src = join(HF_PROJECT, entry);
       if (!existsSync(src)) continue;
       cpSync(src, join(workspace, entry), { recursive: true });
+    }
+    for (const entry of OPTIONAL_PROJECT_ENTRIES) {
+      const src = join(HF_PROJECT, entry);
+      if (!existsSync(src)) continue;
+      const dst = join(workspace, entry);
+      mkdirSync(dirname(dst), { recursive: true });
+      // `dereference: true` so a symlinked fonts dir copies real files into the
+      // workspace (renders run in isolation and the cache dir may be symlinked
+      // to an external location on some operator machines).
+      cpSync(src, dst, { recursive: true, dereference: true });
     }
     return workspace;
   }

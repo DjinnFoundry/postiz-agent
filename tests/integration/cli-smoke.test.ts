@@ -1,21 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const ROOT = resolve(__dirname, '..', '..');
 
-/**
- * CLI wiring smoke tests. Each test invokes `pnpm dev <cmd>` in a child process
- * and asserts the command at least parses, runs, and returns a JSON payload of
- * the expected shape. These guard against import-graph breakage or argument
- * wiring mistakes after a merge; they do NOT exercise whisper, HyperFrames, or
- * the Postiz API (those are covered by manual smoke tests and the unit suite).
- */
-
 function runCli(args: string[], opts: { timeout?: number } = {}) {
-  // Invoke tsx directly so pnpm's `> postiz-agent@0.1.0 dev` preamble does not
-  // contaminate JSON output. `pnpm exec tsx` resolves tsx from local node_modules
-  // but still prints its own header; `./node_modules/.bin/tsx` avoids both.
+  // Invoke tsx directly: pnpm and `pnpm exec` both print a header line that
+  // contaminates JSON stdout; the .bin shim does not.
   const tsx = resolve(ROOT, 'node_modules', '.bin', 'tsx');
   const result = spawnSync(tsx, ['src/cli.ts', ...args], {
     cwd: ROOT,
@@ -34,7 +26,7 @@ describe('CLI smoke: top-level --help', () => {
   it('lists every shipped subcommand', () => {
     const { stdout, status } = runCli(['--help']);
     expect(status).toBe(0);
-    for (const cmd of ['publish', 'render', 'rss', 'decisions', 'status', 'integrations', 'dispatch']) {
+    for (const cmd of ['publish', 'render', 'rss', 'decisions', 'status', 'integrations', 'dispatch', 'themes', 'gallery']) {
       expect(stdout).toContain(cmd);
     }
   });
@@ -61,11 +53,8 @@ describe('CLI smoke: status --json', () => {
 
 describe('CLI smoke: dispatch rejects without candidates', () => {
   it('returns dispatched:false when no slug is eligible', () => {
-    // Reasoning: our fixture story dragon-marcos is the only candidate, and the
-    // decision log records it as published (or not). dispatch either picks it
-    // (dispatched:true, slug:"dragon-marcos") or returns dispatched:false when
-    // it was already published recently. Both shapes are acceptable — we only
-    // assert the payload is valid JSON with the expected keys.
+    // Fixture state is non-deterministic (depends on decision log); both
+    // shapes are valid, we only assert the payload parses with expected keys.
     const { stdout } = runCli(['dispatch', '--platforms', 'tiktok', '--dry-run', '--json'], { timeout: 10_000 });
     const first = stdout.trim().split('\n')[0];
     const parsed = JSON.parse(first);
@@ -84,7 +73,6 @@ describe('CLI smoke: rss produces valid XML', () => {
     const out = resolve(ROOT, 'tmp', 'smoke-feed.xml');
     const { status } = runCli(['rss', '--output', out]);
     expect(status).toBe(0);
-    const { readFileSync } = require('node:fs');
     const xml = readFileSync(out, 'utf-8');
     expect(xml).toContain('<?xml');
     expect(xml).toContain('<rss');
@@ -93,9 +81,9 @@ describe('CLI smoke: rss produces valid XML', () => {
 
 describe('CLI smoke: publish rejects malformed slugs', () => {
   it('exits non-zero on a path-traversal slug', () => {
-    const { status, stderr } = runCli(['publish', '--slug', '../../etc/passwd', '--platforms', 'tiktok', '--dry-run']);
+    const { status, stderr, stdout } = runCli(['publish', '--slug', '../../etc/passwd', '--platforms', 'tiktok', '--dry-run']);
     expect(status).not.toBe(0);
-    expect(stderr + runCli(['publish', '--slug', '../../etc/passwd', '--platforms', 'tiktok', '--dry-run']).stdout).toMatch(/Invalid slug|must match/);
+    expect(stderr + stdout).toMatch(/Invalid slug|must match/);
   });
 });
 
@@ -150,6 +138,15 @@ describe('CLI smoke: stats --json --days 7', () => {
   });
 });
 
+describe('CLI smoke: decisions --run-id', () => {
+  it('returns a JSON array (possibly empty) when filtered by a valid uuid', () => {
+    const { stdout, status } = runCli(['decisions', '--run-id', '11111111-2222-3333-4444-555555555555', '--pretty']);
+    expect(status).toBe(0);
+    const parsed = JSON.parse(stdout);
+    expect(Array.isArray(parsed)).toBe(true);
+  });
+});
+
 describe('CLI smoke: tools describe', () => {
   it('prints full descriptor for a known tool', () => {
     const { stdout, status } = runCli(['tools', 'describe', 'transcribe']);
@@ -164,5 +161,49 @@ describe('CLI smoke: tools describe', () => {
     const { status, stderr } = runCli(['tools', 'describe', 'nope-tool']);
     expect(status).not.toBe(0);
     expect(stderr).toMatch(/unknown tool/);
+  });
+});
+
+describe('CLI smoke: themes list --json', () => {
+  it('returns at least 12 treatments with the expected shape', () => {
+    const { stdout, status } = runCli(['themes', 'list', '--json']);
+    expect(status).toBe(0);
+    const parsed = JSON.parse(stdout);
+    const treatments = Array.isArray(parsed) ? parsed : parsed.treatments;
+    expect(Array.isArray(treatments)).toBe(true);
+    expect(treatments.length).toBeGreaterThanOrEqual(12);
+    for (const t of treatments) {
+      expect(t).toHaveProperty('id');
+      expect(t).toHaveProperty('family');
+      expect(t).toHaveProperty('fontPairing');
+      expect(t).toHaveProperty('description');
+    }
+    const ids = treatments.map((t: { id: string }) => t.id);
+    expect(ids).toEqual(expect.arrayContaining(['hero-display', 'midnight', 'terminal-crt']));
+  });
+});
+
+describe('CLI smoke: themes describe', () => {
+  it('returns a descriptor with resolved palettes and fontPairing for a valid id', () => {
+    const { stdout, status } = runCli(['themes', 'describe', 'hero-display', '--json']);
+    expect(status).toBe(0);
+    const desc = JSON.parse(stdout);
+    expect(desc.ok).toBe(true);
+    expect(desc.treatment.id).toBe('hero-display');
+    expect(Array.isArray(desc.palettes)).toBe(true);
+    expect(desc.palettes.length).toBeGreaterThan(0);
+    for (const p of desc.palettes) {
+      expect(p).toHaveProperty('bg');
+      expect(p).toHaveProperty('ink');
+      expect(p).toHaveProperty('accent');
+    }
+    expect(desc.fontPairing).toHaveProperty('display');
+    expect(desc.fontPairing).toHaveProperty('body');
+  });
+
+  it('exits non-zero on an unknown treatment id', () => {
+    const { status, stderr, stdout } = runCli(['themes', 'describe', 'unknown-treatment-id']);
+    expect(status).not.toBe(0);
+    expect(stderr + stdout).toMatch(/unknown|not found|unknown-treatment-id/i);
   });
 });

@@ -11,7 +11,8 @@
     "build": "tsc",
     "dev": "tsx src/cli.ts",
     "test": "vitest run",
-    "publish-story": "tsx src/orchestrator.ts"
+    "publish-story": "tsx src/orchestrator.ts",
+    "fetch-fonts": "tsx scripts/fetch-fonts.ts"
   },
   "engines": {
     "node": ">=20"

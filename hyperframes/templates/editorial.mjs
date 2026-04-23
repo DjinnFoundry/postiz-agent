@@ -20,7 +20,7 @@
 import { writeFileSync } from 'node:fs';
 import {
   HEAD_SEC, TAIL_SEC, buildPages, escHtml, emitWordColorTimeline,
-  readStoryFromStdin, renderPartRibbon,
+  readStoryFromStdin, renderPartRibbon, resolveFontLinks,
 } from './common.mjs';
 
 const MIN_BODY_PX = 32;
@@ -116,9 +116,10 @@ function renderBubbles() {
 }
 
 // ─── CSS ─────────────────────────────────────────────────────────────────
-const fontLinks = [fp.display?.url, fp.body?.url, fp.folio?.url]
-  .filter(Boolean)
-  .filter((u, i, arr) => arr.indexOf(u) === i)
+// Prefer on-disk cached CSS (see scripts/fetch-fonts.ts) so renders do not
+// block on Google Fonts network calls. Falls through to the remote CDN URL
+// per face when the local cache is absent.
+const fontLinks = resolveFontLinks(fp)
   .map(u => `  <link href="${u}" rel="stylesheet">`).join('\n');
 
 const displayFamily = fp.display?.family ?? 'Fraunces';

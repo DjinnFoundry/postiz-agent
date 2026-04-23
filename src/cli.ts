@@ -18,6 +18,8 @@ import { ContentBundleSchema } from './core/content-bundle.js';
 import { PlatformSchema, type Platform } from './types.js';
 import { runDoctor, formatDoctorReport } from './cli/doctor.js';
 import { runStats, formatStatsReport } from './cli/stats.js';
+import { listThemes, describeTheme, formatThemesList, formatThemeDescription } from './cli/themes.js';
+import { generateGallery, formatGalleryResult, type GalleryAspect } from './cli/gallery.js';
 
 const program = new Command();
 
@@ -175,6 +177,7 @@ program
   .description('Query the JSONL decision log (every publish attempt, with reason and outcome)')
   .option('-s, --slug <slug>', 'filter by story slug')
   .option('-p, --platform <platform>', 'filter by platform (x, tiktok, instagram, youtube, spotify)')
+  .option('--run-id <uuid>', 'filter by the runId returned by a specific publish() call')
   .option('--pretty', 'pretty-print with 2-space indent', false)
   .option('--stuck', 'list slugs currently blocked by repeated failures or active backoff', false)
   .option('--reset-attempts <slug>', 'record a reset marker so <slug> is no longer considered stuck')
@@ -189,6 +192,7 @@ Examples:
   postiz-agent decisions                                     # everything
   postiz-agent decisions --slug dragon-marcos                # one story, every platform
   postiz-agent decisions --platform x                        # all X history
+  postiz-agent decisions --run-id <uuid>                     # every entry from one publish() run
   postiz-agent decisions --stuck                             # what's blocked right now
   postiz-agent decisions --reset-attempts dragon-marcos      # unstuck a slug after fixing it
 `)
@@ -230,7 +234,7 @@ Examples:
     }
 
     const slug = opts.slug ? validateSlug(opts.slug) : undefined;
-    const entries = log.list({ storySlug: slug, platform: opts.platform });
+    const entries = log.list({ storySlug: slug, platform: opts.platform, runId: opts.runId });
     if (opts.pretty) console.log(JSON.stringify(entries, null, 2));
     else for (const e of entries) console.log(JSON.stringify(e));
   });
@@ -704,6 +708,82 @@ function resolveBundle(opts: { id?: string; bundleFile?: string }) {
   }
   if (!opts.id) throw new Error('pass --id <slug> or --bundle-file <path> to resolve a ContentBundle');
   return new AudioKidsAdapter().loadBundle(opts.id);
+}
+
+// ─────────────────────────── themes ───────────────────────────
+const themes = program
+  .command('themes')
+  .description('Inspect the treatment catalog used by the theme engine (12 editorial looks)');
+
+themes
+  .command('list')
+  .description('List every treatment with its family, palette count, and font pairing')
+  .option('--json', 'emit a plain JSON array of treatments (length matches catalog count)', false)
+  .action((opts: { json?: boolean }) => {
+    const report = listThemes();
+    // JSON shape is a bare array — matches doctor/stats/tools precedent of "| jq length" working directly.
+    if (opts.json) process.stdout.write(JSON.stringify(report.treatments, null, 2) + '\n');
+    else console.log(formatThemesList(report));
+  });
+
+themes
+  .command('describe')
+  .description('Print palettes, font pairing, and layout hints for a single treatment')
+  .argument('<id>', 'treatment id (e.g. hero-display, midnight, terminal-crt)')
+  .option('--json', 'emit the descriptor as JSON', false)
+  .action((id: string, opts: { json?: boolean }) => {
+    const desc = describeTheme(id);
+    if (!desc.ok) {
+      console.error(`unknown treatment: ${id}. Available: ${desc.knownIds.join(', ')}`);
+      process.exit(1);
+    }
+    if (opts.json) process.stdout.write(JSON.stringify(desc, null, 2) + '\n');
+    else console.log(formatThemeDescription(desc));
+  });
+
+// ─────────────────────────── gallery ───────────────────────────
+program
+  .command('gallery')
+  .description('Render every treatment for a bundle into a single QA HTML file (visual regression surface)')
+  .option('--id <id>', 'ContentBundle id (AudioKids slug) to load via adapter')
+  .option('--bundle-file <path>', 'path to a JSON file with a complete ContentBundle')
+  .option('-o, --output <path>', 'output HTML path (default: data/galleries/<id>-<timestamp>.html)')
+  .option('--include-treatments <list>', 'comma-separated subset of treatment ids (default: every treatment)')
+  .option('--aspect <aspect>', 'square | portrait | landscape', 'square')
+  .option('--json', 'emit machine-readable JSON on stdout', false)
+  .addHelpText('after', `
+Synthesises word-level timings from bundle.text.body so the template renders
+without whisper. Not a deliverable — QA only. Each treatment lives in an
+isolated iframe so their CSS roots do not collide.
+
+Examples:
+  postiz-agent gallery --id dragon-marcos
+  postiz-agent gallery --id dragon-marcos --aspect portrait --output ./tmp/gallery.html
+  postiz-agent gallery --id dragon-marcos --include-treatments hero-display,midnight
+`)
+  .action((opts: {
+    id?: string; bundleFile?: string; output?: string;
+    includeTreatments?: string; aspect?: string; json?: boolean;
+  }) => {
+    const aspect = parseAspect(opts.aspect);
+    const bundle = resolveBundle(opts);
+    const includeTreatments = opts.includeTreatments
+      ? opts.includeTreatments.split(',').map(s => s.trim()).filter(Boolean)
+      : undefined;
+    const result = generateGallery({
+      bundle,
+      aspect,
+      outputPath: opts.output,
+      includeTreatments,
+    });
+    if (opts.json) process.stdout.write(formatGalleryResult(result, { json: true }) + '\n');
+    else console.log(formatGalleryResult(result));
+  });
+
+function parseAspect(raw: string | undefined): GalleryAspect {
+  const v = (raw ?? 'square').toLowerCase();
+  if (v === 'square' || v === 'portrait' || v === 'landscape') return v;
+  throw new Error(`invalid --aspect ${raw}: must be square | portrait | landscape`);
 }
 
 program.parseAsync(process.argv).catch(err => {

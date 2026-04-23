@@ -15,6 +15,9 @@ const POSTIZ_PROVIDER_KEY: Record<Platform, string | null> = {
 };
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
+// Short TTL: parallel publish to 4 platforms collapses 4 GET /integrations into 1,
+// while still picking up UI-side connect/disconnect changes within seconds.
+const DEFAULT_INTEGRATIONS_CACHE_TTL_MS = 30_000;
 
 export interface PostizMediaUpload {
   id: string;
@@ -44,13 +47,30 @@ export interface CreatePostResult {
   scheduledDate: string;
 }
 
+export interface PostizClientOptions {
+  /** TTL for the in-memory integrations cache. Defaults to 30s. */
+  integrationsCacheTtlMs?: number;
+  /** Clock injection point for deterministic tests. */
+  now?: () => number;
+}
+
 export class PostizClient {
+  private readonly integrationsCacheTtlMs: number;
+  private readonly now: () => number;
+  // A single in-flight promise is shared so concurrent callers (parallel publish
+  // across 4 platforms) collapse onto one HTTP request instead of racing.
+  private integrationsInflight: Promise<PostizIntegration[]> | null = null;
+  private integrationsCache: { at: number; integrations: PostizIntegration[] } | null = null;
+
   constructor(
     private readonly apiUrl: string = config.postiz.apiUrl,
     private readonly apiKey: string = config.postiz.apiKey,
     private readonly uploadCache: UploadCache = new UploadCache(),
+    opts: PostizClientOptions = {},
   ) {
     assertPostizConfigured();
+    this.integrationsCacheTtlMs = opts.integrationsCacheTtlMs ?? DEFAULT_INTEGRATIONS_CACHE_TTL_MS;
+    this.now = opts.now ?? Date.now;
   }
 
   private async request<T>(
@@ -83,7 +103,29 @@ export class PostizClient {
   }
 
   async listIntegrations(): Promise<PostizIntegration[]> {
-    return this.request<PostizIntegration[]>('GET', '/integrations');
+    const cached = this.integrationsCache;
+    if (cached && (this.now() - cached.at) <= this.integrationsCacheTtlMs) {
+      return cached.integrations;
+    }
+    if (this.integrationsInflight) return this.integrationsInflight;
+
+    const promise = this.request<PostizIntegration[]>('GET', '/integrations')
+      .then(list => {
+        this.integrationsCache = { at: this.now(), integrations: list };
+        return list;
+      })
+      .finally(() => {
+        // Clear in-flight regardless of success/failure; failed fetches must not
+        // poison the cache, so the next caller retries the network.
+        this.integrationsInflight = null;
+      });
+    this.integrationsInflight = promise;
+    return promise;
+  }
+
+  /** Force the next listIntegrations()/findIntegration() to refetch from the API. */
+  invalidateIntegrationsCache(): void {
+    this.integrationsCache = null;
   }
 
   async findIntegration(platform: Platform): Promise<PostizIntegration> {

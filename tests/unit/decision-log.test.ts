@@ -61,6 +61,48 @@ describe('DecisionLog', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it('persists runId when provided and filters list by runId', async () => {
+    const runId = '11111111-2222-3333-4444-555555555555';
+    await log.record({
+      action: 'publish.x',
+      storySlug: 's',
+      platform: 'x',
+      reason: '',
+      result: result('x'),
+      runId,
+    });
+    await log.record({
+      action: 'publish.tiktok',
+      storySlug: 's',
+      platform: 'tiktok',
+      reason: '',
+      result: result('tiktok'),
+      runId,
+    });
+    await log.record({
+      action: 'publish.x',
+      storySlug: 's',
+      platform: 'x',
+      reason: '',
+      result: result('x'),
+      runId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+    });
+    const fileContent = readFileSync(logPath, 'utf-8').trim().split('\n');
+    expect(JSON.parse(fileContent[0]).runId).toBe(runId);
+    const filtered = log.list({ runId });
+    expect(filtered).toHaveLength(2);
+    expect(filtered.every(e => e.runId === runId)).toBe(true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('tolerates legacy entries without runId (backward compat) and list() still returns them', async () => {
+    await log.record({ action: 'publish.x', storySlug: 's', platform: 'x', reason: '', result: result('x') });
+    const entries = log.list();
+    expect(entries).toHaveLength(1);
+    expect(entries[0].runId).toBeUndefined();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it('handles many concurrent appends without losing or corrupting entries', async () => {
     const N = 50;
     const writes = Array.from({ length: N }, (_, i) =>
