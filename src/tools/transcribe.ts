@@ -1,6 +1,11 @@
+import { join, basename } from 'node:path';
 import { z } from 'zod';
 import { SubtitleGenerator } from '../media/subtitles.js';
+import { detectSilence, trimSilence as runTrimSilence } from '../lib/silence.js';
+import { probeDurationSec } from '../lib/ffprobe.js';
 import type { Tool } from '../core/tool.js';
+
+const TRIM_TRIGGER_SEC = 1.0;
 
 const InputSchema = z.object({
   bundle: z.any(),
@@ -17,6 +22,14 @@ const InputSchema = z.object({
    * then censors without anyone noticing). Undefined = disabled (back-compat).
    */
   minConfidence: z.number().min(0).max(1).optional(),
+  /**
+   * Auto-strip leading/trailing silence before transcription. Opt-in; when
+   * true, runs ffmpeg silencedetect on the source and, if either end has
+   * more than 1s of silence, writes a trimmed copy into workDir and
+   * transcribes that instead. Prevents misalignment of whisper word timings
+   * with HyperFrames slide pacing.
+   */
+  trimSilence: z.boolean().optional(),
 }).passthrough();
 
 const OutputSchema = z.object({
@@ -27,7 +40,7 @@ const OutputSchema = z.object({
     confidence: z.number().optional(),
   })),
   jsonPath: z.string(),
-  /** Non-fatal advisories (e.g. low-confidence word count). */
+  /** Non-fatal advisories (e.g. low-confidence word count, trim summary). */
   warnings: z.array(z.string()),
   /** 0 when minConfidence is unset (feature disabled). */
   lowConfidenceWords: z.number().int().min(0),
@@ -50,17 +63,39 @@ export const transcribeTool: Tool<Input, Output> = {
 
   async run(input, ctx) {
     const gen = new SubtitleGenerator();
-    const src = input.audioPath ?? (input.bundle.primaryMedia as string);
+    const originalSrc = input.audioPath ?? (input.bundle.primaryMedia as string);
     const lang = (input.language ?? input.bundle.locale ?? 'es').split('-')[0];
-    ctx.logger.info(`  whisper: ${src} (${lang})`);
+
+    const warnings: string[] = [];
+    let srcForWhisper = originalSrc;
+
+    if (input.trimSilence === true) {
+      try {
+        const totalSec = await probeDurationSec(originalSrc);
+        const { leadingSec, trailingSec } = await detectSilence(originalSrc, totalSec);
+        if (leadingSec > TRIM_TRIGGER_SEC || trailingSec > TRIM_TRIGGER_SEC) {
+          const base = basename(originalSrc).replace(/\.[^.]+$/, '');
+          const trimmedPath = join(ctx.workDir, `${base}.trimmed.mp3`);
+          await runTrimSilence(originalSrc, trimmedPath, totalSec, leadingSec, trailingSec);
+          srcForWhisper = trimmedPath;
+          const msg = `trimmed ${leadingSec.toFixed(1)}s of leading silence, ${trailingSec.toFixed(1)}s trailing`;
+          warnings.push(msg);
+          ctx.logger.info(`  silence: ${msg}`);
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        ctx.logger.warn(`  silence: detection failed, using original audio (${msg})`);
+      }
+    }
+
+    ctx.logger.info(`  whisper: ${srcForWhisper} (${lang})`);
     const { words, jsonPath } = await gen.generate({
-      audioPath: src,
+      audioPath: srcForWhisper,
       outputDir: ctx.workDir,
       language: lang,
       ...(input.model ? { model: input.model } : {}),
     });
 
-    const warnings: string[] = [];
     let lowConfidenceWords = 0;
     if (input.minConfidence != null) {
       const threshold = input.minConfidence;
@@ -68,10 +103,9 @@ export const transcribeTool: Tool<Input, Output> = {
         if (w.confidence != null && w.confidence < threshold) lowConfidenceWords++;
       }
       if (lowConfidenceWords > 0) {
-        warnings.push(
-          `${lowConfidenceWords} words with confidence < ${threshold} (possible whisper hallucination)`,
-        );
-        ctx.logger.warn(`  whisper: ${warnings[0]}`);
+        const warnMsg = `${lowConfidenceWords} words with confidence < ${threshold} (possible whisper hallucination)`;
+        warnings.push(warnMsg);
+        ctx.logger.warn(`  whisper: ${warnMsg}`);
       }
     }
 

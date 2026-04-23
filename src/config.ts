@@ -37,6 +37,9 @@ export const config = {
   decisions: {
     logMaxBytes: optionalInt('DECISIONS_LOG_MAX_BYTES', 10 * 1024 * 1024),
   },
+  audio: {
+    minBitrateKbps: optionalInt('MIN_AUDIO_BITRATE_KBPS', 64),
+  },
   paths: {
     projectRoot: resolve(__dirname, '..'),
     binDir: resolve(__dirname, '..', 'bin'),

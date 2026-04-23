@@ -76,7 +76,7 @@ export function buildCaptionRich(opts: CaptionBuildOptions): CaptionBuildResult 
     case 'instagram': out = buildInstagram({ title, tagline, teaser, cta: ctaText, hashtags, partSuffix }); break;
     case 'tiktok':    out = buildTikTok({ title, tagline, cta: ctaText, hashtags, partSuffix });            break;
     case 'x':         out = buildX({ title, tagline, cta: ctaText, hashtags, partSuffix });                 break;
-    case 'youtube':   out = buildYoutube({ bundle, tagline, cta: ctaText, hashtags });                      break;
+    case 'youtube':   out = buildYoutube({ bundle, title, tagline, cta: ctaText, hashtags });               break;
     case 'spotify':   out = '';                                                                             break;
   }
   return {
@@ -143,8 +143,8 @@ function buildX(f: CommonFields): string {
   return withoutCta;
 }
 
-function buildYoutube(f: { bundle: ContentBundle; tagline: string | null; cta: string; hashtags: string[] }): string {
-  const title = redactName(f.bundle.text.title ?? f.bundle.id, f.bundle.recipient);
+function buildYoutube(f: { bundle: ContentBundle; title: string; tagline: string | null; cta: string; hashtags: string[] }): string {
+  const title = f.title;
   const teaser = redactName(extractTeaser(f.bundle.text.body, { maxChars: 500 }), f.bundle.recipient);
   const mood = f.bundle.theme?.mood ?? 'cuento';
   const forWhom = f.tagline ? `para ${f.tagline}` : 'hecho a medida';
@@ -171,16 +171,31 @@ function buildYoutube(f: { bundle: ContentBundle; tagline: string | null; cta: s
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
 /**
- * Scrub the recipient's name out of arbitrary text when consent is 'anonymous'.
- * `public` and `first-name-only` both allow the first name to appear verbatim.
- * Cheap word-boundary replace; morphological variations belong in source data.
+ * Scrub every token of the recipient's name out of arbitrary text when consent
+ * is 'anonymous'. `public` and `first-name-only` leave the text untouched
+ * (those consents accept the name appearing verbatim; the tagline layer is
+ * where `first-name-only` drops surnames for rendering).
+ *
+ * Matching uses Unicode-aware boundaries via lookarounds over `\p{L}\p{M}\p{N}_`
+ * so accented letters (`García`, `María`) are treated as part of the same word.
+ * ASCII `\b` in JS does not include accented chars as word characters, which
+ * would let `\bGarcía\b` leak when followed by a space.
+ *
+ * We intentionally do NOT cover diminutives or morphological variants
+ * (Marcos/Marquitos, Ana/Anita). That would need a stemmer / a curated alias
+ * list and belongs in a future pass; for now, if the source text introduces
+ * variants the recipient record did not list, they pass through.
  */
 function redactName(text: string, recipient?: Recipient): string {
   if (!text || !recipient || recipient.shareConsent !== 'anonymous') return text;
-  const first = recipient.name.trim().split(/\s+/)[0];
-  if (!first) return text;
-  const re = new RegExp(`\\b${escapeRegex(first)}\\b`, 'gi');
-  return text.replace(re, '…');
+  const tokens = recipient.name.trim().split(/\s+/).filter(Boolean);
+  if (!tokens.length) return text;
+  let out = text;
+  for (const tok of tokens) {
+    const re = new RegExp(`(?<![\\p{L}\\p{M}\\p{N}_])${escapeRegex(tok)}(?![\\p{L}\\p{M}\\p{N}_])`, 'giu');
+    out = out.replace(re, '…');
+  }
+  return out;
 }
 
 function escapeRegex(s: string): string {
@@ -241,7 +256,7 @@ export function extractTeaser(body: string, opts: { maxChars?: number } = {}): s
     total += s.length + 1;
   }
   if (sentences.length) return sentences.join(' ');
-  // No sentence terminators — hard-cut on word boundary.
+  // No sentence terminators; hard-cut on word boundary.
   const trimmed = body.trim();
   if (trimmed.length <= cap) return trimmed;
   const clipped = trimmed.slice(0, cap);

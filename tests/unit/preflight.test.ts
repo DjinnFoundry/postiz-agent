@@ -13,21 +13,26 @@ const baseBundle: ContentBundle = {
   locale: 'es-ES',
 };
 
+const okDeps = () => ({
+  probeDuration: async () => 60,
+  probeBitrate: async () => 128,
+});
+
 describe('preflightPlatform', () => {
   it('spotify always preflights as soft-skip (RSS-only)', async () => {
-    const r = await preflightPlatform(baseBundle, 'spotify', { probeDuration: async () => 60 });
+    const r = await preflightPlatform(baseBundle, 'spotify', okDeps());
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.kind).toBe('skip');
   });
 
   it('missing primaryMedia for audio-story → permanent', async () => {
-    const r = await preflightPlatform({ ...baseBundle, primaryMedia: undefined }, 'tiktok', { probeDuration: async () => 60 });
+    const r = await preflightPlatform({ ...baseBundle, primaryMedia: undefined }, 'tiktok', okDeps());
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.kind).toBe('permanent');
   });
 
   it('primaryMedia does not exist on disk → permanent', async () => {
-    const r = await preflightPlatform({ ...baseBundle, primaryMedia: '/tmp/nope-123.mp3' }, 'tiktok', { probeDuration: async () => 60 });
+    const r = await preflightPlatform({ ...baseBundle, primaryMedia: '/tmp/nope-123.mp3' }, 'tiktok', okDeps());
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.kind).toBe('permanent');
@@ -39,14 +44,17 @@ describe('preflightPlatform', () => {
     const r = await preflightPlatform(
       { ...baseBundle, cover: '/tmp/no-cover.png' },
       'tiktok',
-      { probeDuration: async () => 60 },
+      okDeps(),
     );
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.kind).toBe('permanent');
   });
 
   it('audio > platform cap on non-splittable platform → permanent with actionable hint', async () => {
-    const r = await preflightPlatform(baseBundle, 'tiktok', { probeDuration: async () => 700 }); // 700s > 600s TikTok cap
+    const r = await preflightPlatform(baseBundle, 'tiktok', {
+      probeDuration: async () => 700,
+      probeBitrate: async () => 128,
+    });
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.kind).toBe('permanent');
@@ -55,26 +63,107 @@ describe('preflightPlatform', () => {
   });
 
   it('audio > platform cap on instagram → OK (splittable)', async () => {
-    const r = await preflightPlatform(baseBundle, 'instagram', { probeDuration: async () => 700 });
+    const r = await preflightPlatform(baseBundle, 'instagram', {
+      probeDuration: async () => 700,
+      probeBitrate: async () => 128,
+    });
     expect(r.ok).toBe(true);
   });
 
   it('audio under cap → OK', async () => {
-    const r = await preflightPlatform(baseBundle, 'tiktok', { probeDuration: async () => 60 });
+    const r = await preflightPlatform(baseBundle, 'tiktok', okDeps());
     expect(r.ok).toBe(true);
   });
 
-  it('ffprobe failure → needs-config', async () => {
+  it('ffprobe duration failure → needs-config', async () => {
     const r = await preflightPlatform(baseBundle, 'tiktok', {
       probeDuration: async () => { throw new Error('ffprobe exited 1'); },
+      probeBitrate: async () => 128,
     });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.kind).toBe('needs-config');
   });
 
   it('X cap at 4h gives an X-Premium hint when exceeded', async () => {
-    const r = await preflightPlatform(baseBundle, 'x', { probeDuration: async () => 15_000 }); // > 14400 (4h)
+    const r = await preflightPlatform(baseBundle, 'x', {
+      probeDuration: async () => 15_000,
+      probeBitrate: async () => 128,
+    });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.hint).toMatch(/Premium/);
+  });
+
+  it('bitrate below minimum → permanent with regenerate hint', async () => {
+    const r = await preflightPlatform(baseBundle, 'tiktok', {
+      probeDuration: async () => 60,
+      probeBitrate: async () => 8,
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.kind).toBe('permanent');
+      expect(r.reason).toMatch(/bitrate/i);
+      expect(r.reason).toMatch(/8 kbps/);
+      expect(r.hint).toMatch(/regenerate|higher quality/i);
+    }
+  });
+
+  it('bitrate exactly at minimum (64 kbps) → OK', async () => {
+    const r = await preflightPlatform(baseBundle, 'tiktok', {
+      probeDuration: async () => 60,
+      probeBitrate: async () => 64,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it('bitrate above minimum → OK', async () => {
+    const r = await preflightPlatform(baseBundle, 'tiktok', {
+      probeDuration: async () => 60,
+      probeBitrate: async () => 128,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it('custom minBitrateKbps option rejects otherwise-acceptable audio', async () => {
+    const r = await preflightPlatform(
+      baseBundle,
+      'tiktok',
+      {
+        probeDuration: async () => 60,
+        probeBitrate: async () => 96,
+      },
+      { minBitrateKbps: 128 },
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.kind).toBe('permanent');
+  });
+
+  it('probeBitrate failure → needs-config with ffprobe hint', async () => {
+    const r = await preflightPlatform(baseBundle, 'tiktok', {
+      probeDuration: async () => 60,
+      probeBitrate: async () => { throw new Error('ffprobe exited 1'); },
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.kind).toBe('needs-config');
+      expect(r.hint).toMatch(/ffprobe/i);
+    }
+  });
+
+  it('bitrate check runs BEFORE duration cap (cheapest to diagnose first)', async () => {
+    const r = await preflightPlatform(baseBundle, 'tiktok', {
+      probeDuration: async () => 99999,
+      probeBitrate: async () => 8,
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/bitrate/i);
+  });
+
+  it('bitrate check skipped for spotify (RSS-only short-circuit comes first)', async () => {
+    const r = await preflightPlatform(baseBundle, 'spotify', {
+      probeDuration: async () => 60,
+      probeBitrate: async () => { throw new Error('should not be called'); },
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.kind).toBe('skip');
   });
 });

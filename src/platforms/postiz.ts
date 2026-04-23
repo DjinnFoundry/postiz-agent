@@ -2,6 +2,7 @@ import { openAsBlob, statSync } from 'node:fs';
 import { basename } from 'node:path';
 import { config, assertPostizConfigured } from '../config.js';
 import { UploadCache, computeUploadTimeoutMs } from '../lib/upload-cache.js';
+import { TokenBucket } from '../lib/token-bucket.js';
 import type { Platform } from '../types.js';
 
 // Postiz uses these identifiers in its `integration` field when creating posts.
@@ -18,6 +19,8 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 // Short TTL: parallel publish to 4 platforms collapses 4 GET /integrations into 1,
 // while still picking up UI-side connect/disconnect changes within seconds.
 const DEFAULT_INTEGRATIONS_CACHE_TTL_MS = 30_000;
+const DEFAULT_RATE_LIMIT_PER_SEC = 10;
+const DEFAULT_RATE_LIMIT_ACQUIRE_TIMEOUT_MS = 30_000;
 
 export interface PostizMediaUpload {
   id: string;
@@ -52,13 +55,21 @@ export interface PostizClientOptions {
   integrationsCacheTtlMs?: number;
   /** Clock injection point for deterministic tests. */
   now?: () => number;
+  /** Max sustained requests/sec. Defaults to 10. Set to 0 to disable. */
+  rateLimitPerSec?: number;
+  /** Burst capacity (max tokens). Defaults to rateLimitPerSec. */
+  rateLimitBurst?: number;
+  /** Max wait time for a rate-limit token. Defaults to 30s. */
+  rateLimitAcquireTimeoutMs?: number;
+  /** Sleep override for deterministic tests of rate limiter. */
+  rateLimitSleep?: (ms: number) => Promise<void>;
 }
 
 export class PostizClient {
   private readonly integrationsCacheTtlMs: number;
   private readonly now: () => number;
-  // A single in-flight promise is shared so concurrent callers (parallel publish
-  // across 4 platforms) collapse onto one HTTP request instead of racing.
+  private readonly bucket: TokenBucket | null;
+  private readonly rateLimitAcquireTimeoutMs: number;
   private integrationsInflight: Promise<PostizIntegration[]> | null = null;
   private integrationsCache: { at: number; integrations: PostizIntegration[] } | null = null;
 
@@ -71,6 +82,16 @@ export class PostizClient {
     assertPostizConfigured();
     this.integrationsCacheTtlMs = opts.integrationsCacheTtlMs ?? DEFAULT_INTEGRATIONS_CACHE_TTL_MS;
     this.now = opts.now ?? Date.now;
+    this.rateLimitAcquireTimeoutMs = opts.rateLimitAcquireTimeoutMs ?? DEFAULT_RATE_LIMIT_ACQUIRE_TIMEOUT_MS;
+    const ratePerSec = opts.rateLimitPerSec ?? DEFAULT_RATE_LIMIT_PER_SEC;
+    this.bucket = ratePerSec > 0
+      ? new TokenBucket({
+          ratePerSec,
+          burst: opts.rateLimitBurst,
+          now: this.now,
+          sleep: opts.rateLimitSleep,
+        })
+      : null;
   }
 
   private async request<T>(
@@ -89,6 +110,7 @@ export class PostizClient {
       headers['Content-Type'] = opts.contentType ?? 'application/json';
       payload = JSON.stringify(body);
     }
+    if (this.bucket) await this.bucket.acquire(this.rateLimitAcquireTimeoutMs);
     const res = await fetch(`${this.apiUrl}${path}`, {
       method,
       headers,

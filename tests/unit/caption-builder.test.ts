@@ -161,3 +161,70 @@ describe('deriveHashtags', () => {
     expect(deriveHashtags(b)).toContain('educacion');
   });
 });
+
+describe('redactName: anonymous consent expanded coverage', () => {
+  it('redacts surnames too when consent is anonymous (multi-token name)', () => {
+    const bundle: ContentBundle = {
+      ...base,
+      text: { title: 'Un cuento', body: 'García se fue al bosque y volvió con una historia.' },
+      recipient: { name: 'Ana María García', age: 6, shareConsent: 'anonymous' },
+    };
+    const c = buildCaption({ bundle, platform: 'youtube' });
+    expect(c).not.toContain('García');
+    expect(c).not.toContain('Ana');
+    expect(c).not.toContain('María');
+  });
+
+  it('redacts all casings of a single-token name', () => {
+    const bundle: ContentBundle = {
+      ...base,
+      text: { title: 'Marcos y el dragón', body: 'Marcos caminaba. Luego marcos se cansó.' },
+      recipient: { name: 'Marcos', age: 6, shareConsent: 'anonymous' },
+    };
+    const c = buildCaption({ bundle, platform: 'youtube' });
+    expect(c).not.toMatch(/marcos/i);
+  });
+
+  it('public consent leaves the full text untouched (no surname redaction)', () => {
+    const bundle: ContentBundle = {
+      ...base,
+      text: { title: 'Ana García y el dragón', body: 'Ana García caminaba por el bosque.' },
+      recipient: { name: 'Ana García', age: 6, shareConsent: 'public' },
+    };
+    const c = buildCaption({ bundle, platform: 'youtube' });
+    expect(c).toContain('Ana García');
+  });
+
+  it('first-name-only consent does not trigger redaction', () => {
+    const bundle: ContentBundle = {
+      ...base,
+      text: { title: 'Un cuento para Ana', body: 'Ana García caminaba por el bosque.' },
+      recipient: { name: 'Ana García', age: 6, shareConsent: 'first-name-only' },
+    };
+    const c = buildCaption({ bundle, platform: 'youtube' });
+    expect(c).toContain('Ana');
+    expect(c).toContain('García');
+  });
+
+  it('does not redact substring matches (word-boundary safety)', () => {
+    const bundle: ContentBundle = {
+      ...base,
+      text: { title: 'La banana', body: 'La banana estaba madura. Había una bananaria cerca.' },
+      recipient: { name: 'Ana', age: 6, shareConsent: 'anonymous' },
+    };
+    const c = buildCaption({ bundle, platform: 'youtube' });
+    expect(c).toContain('banana');
+    expect(c).toContain('bananaria');
+  });
+
+  it('redacts name adjacent to punctuation (.!?¿)', () => {
+    const bundle: ContentBundle = {
+      ...base,
+      text: { title: '¿Ana?', body: 'Hola Ana. Llegó Ana! ¿Ana? Sí, Ana, vino.' },
+      recipient: { name: 'Ana', age: 6, shareConsent: 'anonymous' },
+    };
+    const c = buildCaption({ bundle, platform: 'youtube' });
+    expect(c).not.toMatch(/\bAna\b/);
+    expect(c).not.toMatch(/¿Ana\?/);
+  });
+});

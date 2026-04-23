@@ -2,7 +2,8 @@ import { existsSync } from 'node:fs';
 import type { ContentBundle } from './content-bundle.js';
 import type { Platform } from '../types.js';
 import { VARIANTS } from '../types.js';
-import { probeDurationSec } from '../lib/ffprobe.js';
+import { probeDurationSec, probeBitrateKbps } from '../lib/ffprobe.js';
+import { config } from '../config.js';
 
 export interface PreflightOk { ok: true }
 export interface PreflightSkip {
@@ -24,13 +25,18 @@ const SPOTIFY_RSS_ONLY: Platform = 'spotify';
 
 export interface PreflightDeps {
   probeDuration?: (audioPath: string) => Promise<number>;
+  probeBitrate?: (audioPath: string) => Promise<number>;
+}
+
+export interface PreflightOptions {
+  minBitrateKbps?: number;
 }
 
 /**
  * Fast check before expensive render/upload work. Refuses early when the target
- * platform cannot accept this bundle (oversize audio, missing cover, RSS-only),
- * so dispatch doesn't burn 2-3 minutes rendering an MP4 that will then fail
- * the platform capability check.
+ * platform cannot accept this bundle (oversize audio, missing cover, RSS-only,
+ * bitrate too low to produce decent video), so dispatch doesn't burn 2-3 minutes
+ * rendering an MP4 that will then fail the platform capability check.
  *
  * Returns:
  *  - ok: true                  → proceed
@@ -42,8 +48,11 @@ export async function preflightPlatform(
   bundle: ContentBundle,
   platform: Platform,
   deps: PreflightDeps = {},
+  options: PreflightOptions = {},
 ): Promise<PreflightResult> {
   const probe = deps.probeDuration ?? probeDurationSec;
+  const probeBitrate = deps.probeBitrate ?? probeBitrateKbps;
+  const minBitrateKbps = options.minBitrateKbps ?? config.audio.minBitrateKbps;
 
   if (platform === SPOTIFY_RSS_ONLY) {
     return { ok: false, reason: 'spotify is RSS-only; use `postiz-agent rss` to rebuild the feed', kind: 'skip' };
@@ -76,8 +85,27 @@ export async function preflightPlatform(
     };
   }
 
-  // Duration cap. IG is splittable; others hard-fail.
   if (bundle.primaryMedia && bundle.kind === 'audio-story') {
+    try {
+      const kbps = await probeBitrate(bundle.primaryMedia);
+      if (kbps < minBitrateKbps) {
+        return {
+          ok: false,
+          reason: `audio bitrate ${kbps} kbps is below minimum ${minBitrateKbps} kbps`,
+          kind: 'permanent',
+          hint: 'regenerate MP3 at higher quality (at least 64 kbps, 128+ recommended)',
+        };
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        ok: false,
+        reason: `could not probe audio bitrate: ${msg}`,
+        kind: 'needs-config',
+        hint: 'verify ffprobe is installed and the audio file is a valid MP3',
+      };
+    }
+
     try {
       const duration = await probe(bundle.primaryMedia);
       if (duration > variant.maxDurationSec && !SPLITTABLE_PLATFORMS.has(platform)) {
