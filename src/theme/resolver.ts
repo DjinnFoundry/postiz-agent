@@ -87,16 +87,18 @@ export function resolveTheme(bundle: ContentBundle, opts: ResolveOptions = {}): 
   return materialize(decision, byTreatment, byPalette, byPairing, catalog, bundle);
 }
 
-/** Inspect body text for catalog keyword hints; returns a candidate list or null. */
+/** Inspect body text for catalog keyword hints; returns a candidate list or null.
+ *  Tokenises the body and title on non-letter boundaries so a keyword like "mar"
+ *  does NOT spuriously match inside "Marcos" or "armario". Plurals and morphological
+ *  variants should be added explicitly to keywordHints if we want them. */
 function matchKeywords(bundle: ContentBundle, catalog: ThemeCatalog): string[] | null {
   if (!catalog.keywordHints || Object.keys(catalog.keywordHints).length === 0) return null;
-  const body = normalize(bundle.text.body + ' ' + (bundle.text.title ?? ''));
+  const text = normalize(bundle.text.body + ' ' + (bundle.text.title ?? ''));
+  const tokens = new Set(text.split(/[^a-z0-9]+/u).filter(Boolean));
   const hits: string[] = [];
   for (const [keyword, candidates] of Object.entries(catalog.keywordHints)) {
-    const needle = normalize(keyword);
-    if (body.includes(needle)) hits.push(...candidates);
+    if (tokens.has(normalize(keyword))) hits.push(...candidates);
   }
-  // Deduplicate while preserving order
   const seen = new Set<string>();
   const ordered = hits.filter(h => (seen.has(h) ? false : seen.add(h) && true));
   return ordered.length ? ordered : null;

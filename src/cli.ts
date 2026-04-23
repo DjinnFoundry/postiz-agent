@@ -9,6 +9,7 @@ import { PostizClient } from './platforms/postiz.js';
 import { config } from './config.js';
 import { run } from './lib/process.js';
 import { validateSlug } from './lib/slug.js';
+import { assertSafeBundlePath } from './lib/safe-path.js';
 import { listCandidates, selectNextStory } from './dispatch.js';
 import { AudioKidsAdapter } from './adapters/audiokids.js';
 import { PipelineRunner, PipelineSpecSchema, type PipelineSpec } from './core/pipeline.js';
@@ -18,6 +19,7 @@ import { ContentBundleSchema } from './core/content-bundle.js';
 import { PlatformSchema, type Platform } from './types.js';
 import { runDoctor, formatDoctorReport } from './cli/doctor.js';
 import { runStats, formatStatsReport } from './cli/stats.js';
+import { runCtaAb, formatCtaAbReport } from './cli/cta-ab.js';
 import { listThemes, describeTheme, formatThemesList, formatThemeDescription } from './cli/themes.js';
 import { generateGallery, formatGalleryResult, type GalleryAspect } from './cli/gallery.js';
 
@@ -239,6 +241,47 @@ Examples:
     else for (const e of entries) console.log(JSON.stringify(e));
   });
 
+program.commands.find(c => c.name() === 'decisions')!
+  .command('rotate')
+  .description('Force-rotate the active decision log to a timestamped archive')
+  .option('--force', 'rotate even if the active file has not reached the size threshold', false)
+  .option('--json', 'emit machine-readable JSON', false)
+  .action((opts: { force?: boolean; json?: boolean }) => {
+    const log = new DecisionLog();
+    if (!opts.force && !log.shouldRotate()) {
+      const payload = { rotated: false, reason: 'under threshold; pass --force to rotate anyway' };
+      if (opts.json) process.stdout.write(JSON.stringify(payload) + '\n');
+      else console.log(payload.reason);
+      return;
+    }
+    const info = log.rotate();
+    const payload = { rotated: Boolean(info.rotatedTo), rotatedTo: info.rotatedTo, bytes: info.bytes };
+    if (opts.json) process.stdout.write(JSON.stringify(payload) + '\n');
+    else if (payload.rotated) console.log(`rotated → ${info.rotatedTo} (${info.bytes} bytes)`);
+    else console.log('no active log to rotate');
+  });
+
+program.commands.find(c => c.name() === 'decisions')!
+  .command('archives')
+  .description('List rotated decision-log archives with their sizes and date ranges')
+  .option('--json', 'emit machine-readable JSON', false)
+  .action((opts: { json?: boolean }) => {
+    const log = new DecisionLog();
+    const archives = log.listArchives();
+    if (opts.json) {
+      process.stdout.write(JSON.stringify(archives) + '\n');
+      return;
+    }
+    if (!archives.length) {
+      console.log('no archived decision logs');
+      return;
+    }
+    for (const a of archives) {
+      const range = a.earliestTs && a.latestTs ? ` [${a.earliestTs} .. ${a.latestTs}]` : '';
+      console.log(`${a.path} (${a.sizeBytes} bytes)${range}`);
+    }
+  });
+
 // ─────────────────────────── status ───────────────────────────
 program
   .command('status')
@@ -332,6 +375,36 @@ Read-only digest for a quick operational pulse. Always exits 0.
     const report = await runStats({ days, platform });
     if (opts.json) process.stdout.write(JSON.stringify(report, null, 2) + '\n');
     else console.log(formatStatsReport(report));
+    process.exit(0);
+  });
+
+// ─────────────────────────── cta-ab ───────────────────────────
+program
+  .command('cta-ab')
+  .description('Per-CTA-variant mini report: uses, success rate, sample urls. Read-only.')
+  .option('--days <n>', 'window in days', '30')
+  .option('--platform <platform>', 'filter to a single platform (x, tiktok, instagram, youtube)')
+  .option('--json', 'emit the report as JSON', false)
+  .option('--ingest <file>', 'JSONL engagement file (postId,engagement,recordedAt) — parsing not yet wired')
+  .addHelpText('after', `
+Complements 'stats' by zooming into CTA variant performance. Each variant shows
+uses in the window (success + failed), success rate, and the first 3 post URLs
+so you can open the winners and losers in a browser. Always exits 0.
+
+The --ingest flag is accepted today but engagement aggregation is not yet wired:
+the follow-up ingester reads YouTubeCLI exports (and similar) and joins them
+onto decision-log postIds so 'avgEngagement' appears per variant.
+`)
+  .action(async (opts: { days?: string; platform?: string; json?: boolean; ingest?: string }) => {
+    const days = opts.days ? Number.parseInt(opts.days, 10) : 30;
+    if (!Number.isFinite(days) || days <= 0) {
+      console.error(`invalid --days value: ${opts.days}`);
+      process.exit(1);
+    }
+    const platform = opts.platform ? PlatformSchema.parse(opts.platform) : undefined;
+    const report = await runCtaAb({ days, platform, ingestFile: opts.ingest });
+    if (opts.json) process.stdout.write(JSON.stringify(report, null, 2) + '\n');
+    else console.log(formatCtaAbReport(report));
     process.exit(0);
   });
 
@@ -703,8 +776,9 @@ program
 
 function resolveBundle(opts: { id?: string; bundleFile?: string }) {
   if (opts.bundleFile) {
-    if (!existsSync(opts.bundleFile)) throw new Error(`bundle file not found: ${opts.bundleFile}`);
-    return ContentBundleSchema.parse(JSON.parse(readFileSync(opts.bundleFile, 'utf-8')));
+    const safe = assertSafeBundlePath(opts.bundleFile);
+    if (!existsSync(safe)) throw new Error(`bundle file not found: ${opts.bundleFile}`);
+    return ContentBundleSchema.parse(JSON.parse(readFileSync(safe, 'utf-8')));
   }
   if (!opts.id) throw new Error('pass --id <slug> or --bundle-file <path> to resolve a ContentBundle');
   return new AudioKidsAdapter().loadBundle(opts.id);

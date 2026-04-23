@@ -1,4 +1,4 @@
-import { readFileSync, statSync } from 'node:fs';
+import { openAsBlob, statSync } from 'node:fs';
 import { basename } from 'node:path';
 import { config, assertPostizConfigured } from '../config.js';
 import { UploadCache, computeUploadTimeoutMs } from '../lib/upload-cache.js';
@@ -145,12 +145,13 @@ export class PostizClient {
       return { id: cached.mediaId, path: cached.path ?? filePath };
     }
 
-    const buf = readFileSync(filePath);
     const name = basename(filePath);
     const stat = statSync(filePath);
     const timeoutMs = computeUploadTimeoutMs(stat.size);
     const form = new FormData();
-    const blob = new Blob([buf]);
+    // openAsBlob returns a Blob backed by the file; bytes are streamed lazily during
+    // fetch's multipart encode, so a 30 MB MP4 no longer costs 30 MB of resident RAM.
+    const blob = await openAsBlob(filePath);
     form.append('file', blob, name);
     const result = await this.request<{ id: string; path: string; url?: string }>(
       'POST', '/upload', form, { timeoutMs },

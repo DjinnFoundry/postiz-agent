@@ -1,12 +1,19 @@
 import { DecisionLog } from '../decisions/log.js';
 import { findStuckSlugs, type StuckSlugInfo } from '../dispatch.js';
 import type { DecisionLogEntry, Platform } from '../types.js';
+import { filterPublishes, filterWindow, windowFromMs } from './decisions-window.js';
 
 export interface StatsCounts {
   success: number;
   failed: number;
   skipped: number;
   total: number;
+  successRate: number;
+}
+
+export interface CtaVariantStats {
+  success: number;
+  failed: number;
   successRate: number;
 }
 
@@ -20,7 +27,10 @@ export interface StatsReport {
   byPlatform: Partial<Record<Platform, StatsCounts>>;
   topRemediations: Array<{ action: string; count: number }>;
   topStuck: StuckSlugInfo[];
-  ctaVariants: Partial<Record<Platform, Record<string, number>>>;
+  // Breaking change vs v0.1: previously `Record<variantId, number>` (count only).
+  // Now carries success/failed/rate so operators can spot a variant that correlates
+  // with platform rejections (e.g. a CTA that pushes captions over length limits).
+  ctaVariants: Partial<Record<Platform, Record<string, CtaVariantStats>>>;
 }
 
 export interface StatsInput {
@@ -40,19 +50,13 @@ export async function runStats(input: StatsInput = {}): Promise<StatsReport> {
   const decisions = input.decisions ?? new DecisionLog().list();
   const platformFilter = input.platform;
 
-  const fromMs = now.getTime() - days * 24 * 3600_000;
-  const windowed = decisions.filter(d => {
-    const t = Date.parse(d.createdAt);
-    if (!Number.isFinite(t)) return false;
-    if (t < fromMs) return false;
-    if (platformFilter && d.platform !== platformFilter) return false;
-    return true;
-  });
-  const publishes = windowed.filter(d => d.action.startsWith('publish.'));
+  const fromMs = windowFromMs({ now, days });
+  const windowed = filterWindow(decisions, { now, days, platform: platformFilter });
+  const publishes = filterPublishes(windowed);
 
   const totals = emptyCounts();
   const byPlatform: Partial<Record<Platform, StatsCounts>> = {};
-  const ctaVariants: Partial<Record<Platform, Record<string, number>>> = {};
+  const ctaVariants: Partial<Record<Platform, Record<string, CtaVariantStats>>> = {};
   const remediationCounts = new Map<string, number>();
 
   for (const entry of publishes) {
@@ -62,9 +66,14 @@ export async function runStats(input: StatsInput = {}): Promise<StatsReport> {
     tally(totals, entry);
 
     const variant = entry.result?.ctaVariant;
-    if (entry.result?.success && variant) {
+    // Skipped attempts never hit the platform; counting them would dilute the rate
+    // and mask the failure-correlation signal this report exists to surface.
+    if (variant && !entry.result?.skipped) {
       const bucket = ctaVariants[entry.platform] ?? {};
-      bucket[variant] = (bucket[variant] ?? 0) + 1;
+      const slot = bucket[variant] ?? { success: 0, failed: 0, successRate: 0 };
+      if (entry.result?.success) slot.success += 1;
+      else slot.failed += 1;
+      bucket[variant] = slot;
       ctaVariants[entry.platform] = bucket;
     }
 
@@ -76,6 +85,14 @@ export async function runStats(input: StatsInput = {}): Promise<StatsReport> {
 
   finalizeRate(totals);
   for (const p of Object.keys(byPlatform) as Platform[]) finalizeRate(byPlatform[p]!);
+  for (const p of Object.keys(ctaVariants) as Platform[]) {
+    const bucket = ctaVariants[p]!;
+    for (const id of Object.keys(bucket)) {
+      const s = bucket[id];
+      const denom = s.success + s.failed;
+      s.successRate = denom === 0 ? 0 : s.success / denom;
+    }
+  }
 
   const topRemediations = [...remediationCounts.entries()]
     .sort((a, b) => b[1] - a[1])
@@ -157,16 +174,26 @@ export function formatStatsReport(report: StatsReport): string {
   }
   out.push('');
 
-  out.push('── cta variants ──');
+  out.push('── cta variants (success / failed · rate) ──');
   const ctaPlatforms = Object.keys(report.ctaVariants) as Platform[];
   if (ctaPlatforms.length === 0) {
     out.push('  (none)');
   } else {
     for (const p of ctaPlatforms.sort()) {
       const variants = report.ctaVariants[p]!;
-      const entries = Object.entries(variants).sort((a, b) => b[1] - a[1]);
+      // Sort by volume first, then by lowest success rate so a correlated-failure
+      // variant bubbles up visually even if it has fewer samples than the winners.
+      const entries = Object.entries(variants).sort((a, b) => {
+        const usesA = a[1].success + a[1].failed;
+        const usesB = b[1].success + b[1].failed;
+        if (usesB !== usesA) return usesB - usesA;
+        return a[1].successRate - b[1].successRate;
+      });
       out.push(`  ${p}:`);
-      for (const [id, n] of entries) out.push(`    ${n.toString().padStart(4)} · ${id}`);
+      for (const [id, s] of entries) {
+        const rate = `${(s.successRate * 100).toFixed(1)}%`;
+        out.push(`    ${s.success.toString().padStart(3)} / ${s.failed.toString().padStart(3)} · ${rate.padStart(6)} · ${id}`);
+      }
     }
   }
   return out.join('\n');

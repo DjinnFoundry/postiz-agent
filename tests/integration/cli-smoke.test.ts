@@ -138,6 +138,32 @@ describe('CLI smoke: stats --json --days 7', () => {
   });
 });
 
+describe('CLI smoke: cta-ab --json --days 30', () => {
+  it('returns a well-formed per-platform variant report', () => {
+    const { stdout, status } = runCli(['cta-ab', '--json', '--days', '30']);
+    expect(status).toBe(0);
+    const report = JSON.parse(stdout);
+    expect(report).toHaveProperty('windowDays', 30);
+    expect(report).toHaveProperty('platforms');
+    expect(typeof report.platforms).toBe('object');
+    for (const p of Object.values(report.platforms) as Array<{
+      variants: Array<{ id: string; uses: number; success: number; failed: number; successRate: number; sampleUrls: string[] }>;
+      unknownCount: number;
+    }>) {
+      expect(Array.isArray(p.variants)).toBe(true);
+      expect(typeof p.unknownCount).toBe('number');
+      for (const v of p.variants) {
+        expect(typeof v.id).toBe('string');
+        expect(typeof v.uses).toBe('number');
+        expect(typeof v.success).toBe('number');
+        expect(typeof v.failed).toBe('number');
+        expect(typeof v.successRate).toBe('number');
+        expect(Array.isArray(v.sampleUrls)).toBe(true);
+      }
+    }
+  });
+});
+
 describe('CLI smoke: decisions --run-id', () => {
   it('returns a JSON array (possibly empty) when filtered by a valid uuid', () => {
     const { stdout, status } = runCli(['decisions', '--run-id', '11111111-2222-3333-4444-555555555555', '--pretty']);
@@ -180,6 +206,29 @@ describe('CLI smoke: themes list --json', () => {
     }
     const ids = treatments.map((t: { id: string }) => t.id);
     expect(ids).toEqual(expect.arrayContaining(['hero-display', 'midnight', 'terminal-crt']));
+  });
+});
+
+describe('CLI smoke: decisions archives --json', () => {
+  it('returns a JSON array (possibly empty) listing rotated logs', () => {
+    const { stdout, status } = runCli(['decisions', 'archives', '--json']);
+    expect(status).toBe(0);
+    const parsed = JSON.parse(stdout);
+    expect(Array.isArray(parsed)).toBe(true);
+    for (const a of parsed) {
+      expect(a).toHaveProperty('path');
+      expect(a).toHaveProperty('sizeBytes');
+    }
+  });
+});
+
+describe('CLI smoke: tools call rejects unsafe --bundle-file', () => {
+  it('refuses /etc/passwd with a clear error', () => {
+    const { status, stderr, stdout } = runCli(
+      ['tools', 'call', 'render-slide-video', '--bundle-file', '/etc/passwd'],
+    );
+    expect(status).not.toBe(0);
+    expect(stderr + stdout).toMatch(/bundle-file must live under/);
   });
 });
 

@@ -9,6 +9,13 @@ function optional(name: string, fallback = ''): string {
   return process.env[name] ?? fallback;
 }
 
+function optionalInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
 export const config = {
   postiz: {
     apiUrl: optional('POSTIZ_API_URL', 'http://localhost:5000/public/v1'),
@@ -26,6 +33,9 @@ export const config = {
   },
   alerts: {
     webhookUrl: optional('ALERT_WEBHOOK_URL'),
+  },
+  decisions: {
+    logMaxBytes: optionalInt('DECISIONS_LOG_MAX_BYTES', 10 * 1024 * 1024),
   },
   paths: {
     projectRoot: resolve(__dirname, '..'),

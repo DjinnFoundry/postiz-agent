@@ -112,7 +112,7 @@ describe('runStats', () => {
     expect(report.topStuck.length).toBeLessThanOrEqual(3);
   });
 
-  it('aggregates CTA variant distribution per platform', async () => {
+  it('aggregates CTA variant performance per platform with success/failed/rate', async () => {
     const decisions: DecisionLogEntry[] = [
       entry({ slug: 'a', platform: 'x', hoursAgo: 1, success: true, ctaVariant: 'follow-a' }),
       entry({ slug: 'b', platform: 'x', hoursAgo: 2, success: true, ctaVariant: 'follow-a' }),
@@ -120,9 +120,34 @@ describe('runStats', () => {
       entry({ slug: 'd', platform: 'tiktok', hoursAgo: 4, success: true, ctaVariant: 'follow-c' }),
     ];
     const report = await runStats({ now: NOW, decisions, days: 30 });
-    expect(report.ctaVariants.x!['follow-a']).toBe(2);
-    expect(report.ctaVariants.x!['share-b']).toBe(1);
-    expect(report.ctaVariants.tiktok!['follow-c']).toBe(1);
+    expect(report.ctaVariants.x!['follow-a']).toEqual({ success: 2, failed: 0, successRate: 1 });
+    expect(report.ctaVariants.x!['share-b']).toEqual({ success: 1, failed: 0, successRate: 1 });
+    expect(report.ctaVariants.tiktok!['follow-c']).toEqual({ success: 1, failed: 0, successRate: 1 });
+  });
+
+  it('correlates CTA variant with failures so a length-busting variant is visible', async () => {
+    const decisions: DecisionLogEntry[] = [
+      entry({ slug: 'a', platform: 'instagram', hoursAgo: 1, success: true, ctaVariant: 'ig-bio' }),
+      entry({ slug: 'b', platform: 'instagram', hoursAgo: 2, success: true, ctaVariant: 'ig-bio' }),
+      entry({ slug: 'c', platform: 'instagram', hoursAgo: 3, success: false, errorClass: 'permanent', ctaVariant: 'ig-long' }),
+      entry({ slug: 'd', platform: 'instagram', hoursAgo: 4, success: false, errorClass: 'permanent', ctaVariant: 'ig-long' }),
+      entry({ slug: 'e', platform: 'instagram', hoursAgo: 5, success: true, ctaVariant: 'ig-long' }),
+    ];
+    const report = await runStats({ now: NOW, decisions, days: 30 });
+    const ig = report.ctaVariants.instagram!;
+    expect(ig['ig-bio']).toEqual({ success: 2, failed: 0, successRate: 1 });
+    expect(ig['ig-long'].success).toBe(1);
+    expect(ig['ig-long'].failed).toBe(2);
+    expect(ig['ig-long'].successRate).toBeCloseTo(1 / 3, 3);
+  });
+
+  it('excludes skipped publishes from CTA variant accounting', async () => {
+    const decisions: DecisionLogEntry[] = [
+      entry({ slug: 'a', platform: 'x', hoursAgo: 1, success: true, skipped: true, ctaVariant: 'x-try' }),
+      entry({ slug: 'b', platform: 'x', hoursAgo: 2, success: true, ctaVariant: 'x-try' }),
+    ];
+    const report = await runStats({ now: NOW, decisions, days: 30 });
+    expect(report.ctaVariants.x!['x-try']).toEqual({ success: 1, failed: 0, successRate: 1 });
   });
 
   it('ignores action entries that are not publish.* when computing totals', async () => {
