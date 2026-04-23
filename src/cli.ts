@@ -16,6 +16,8 @@ import { createDefaultRegistry } from './tools/index.js';
 import { consoleLogger, silentLogger } from './core/tool.js';
 import { ContentBundleSchema } from './core/content-bundle.js';
 import { PlatformSchema, type Platform } from './types.js';
+import { runDoctor, formatDoctorReport } from './cli/doctor.js';
+import { runStats, formatStatsReport } from './cli/stats.js';
 
 const program = new Command();
 
@@ -286,6 +288,47 @@ program
       console.error(`Could not reach Postiz at ${config.postiz.apiUrl}: ${err instanceof Error ? err.message : err}`);
       process.exit(1);
     }
+  });
+
+// ─────────────────────────── doctor ───────────────────────────
+program
+  .command('doctor')
+  .description('Deep diagnostic: integrations, stuck slugs, recent failures, caches. Prints remediation hints.')
+  .option('--json', 'emit the full report as JSON (one object on stdout)', false)
+  .addHelpText('after', `
+Groups every signal an autonomous agent needs to self-triage into one command:
+environment, postiz, audiokids, stuck-slugs, recent-failures, upload-cache,
+theme-decisions. Exit 1 when any section reports a blocking issue (permanent,
+needs-config, needs-human) or when >0 stuck slugs are detected.
+`)
+  .action(async (opts: { json?: boolean }) => {
+    const report = await runDoctor();
+    if (opts.json) process.stdout.write(JSON.stringify(report, null, 2) + '\n');
+    else console.log(formatDoctorReport(report));
+    process.exit(report.ok ? 0 : 1);
+  });
+
+// ─────────────────────────── stats ───────────────────────────
+program
+  .command('stats')
+  .description('Roll up the decision log: success rate, top remediations, stuck slugs, CTA variants.')
+  .option('--days <n>', 'window in days', '30')
+  .option('--platform <platform>', 'filter to a single platform (x, tiktok, instagram, youtube, spotify)')
+  .option('--json', 'emit the report as JSON', false)
+  .addHelpText('after', `
+Read-only digest for a quick operational pulse. Always exits 0.
+`)
+  .action(async (opts: { days?: string; platform?: string; json?: boolean }) => {
+    const days = opts.days ? Number.parseInt(opts.days, 10) : 30;
+    if (!Number.isFinite(days) || days <= 0) {
+      console.error(`invalid --days value: ${opts.days}`);
+      process.exit(1);
+    }
+    const platform = opts.platform ? PlatformSchema.parse(opts.platform) : undefined;
+    const report = await runStats({ days, platform });
+    if (opts.json) process.stdout.write(JSON.stringify(report, null, 2) + '\n');
+    else console.log(formatStatsReport(report));
+    process.exit(0);
   });
 
 // ─────────────────────────── dispatch ───────────────────────────

@@ -47,10 +47,11 @@ export class SubtitleGenerator {
     }
 
     const data = parseWhisperJson(jsonPath);
-    const words = flattenWords(data).map(w => ({
+    const words: WordEntry[] = flattenWords(data).map(w => ({
       text: w.word,
       start: w.start,
       end: w.end,
+      ...(w.probability != null ? { confidence: w.probability } : {}),
     }));
     return { words, jsonPath };
   }

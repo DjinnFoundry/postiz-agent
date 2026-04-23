@@ -52,6 +52,8 @@ export interface WordEntry {
   text: string;
   start: number;
   end: number;
+  /** Per-word confidence in [0,1] as reported by whisper. Undefined when unknown. */
+  confidence?: number;
 }
 
 export type PresetName = 'x' | 'tiktok' | 'reel' | 'youtube';

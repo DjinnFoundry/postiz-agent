@@ -77,3 +77,133 @@ describe('moderateWords()', () => {
     expect(out.words).not.toBe(input);
   });
 });
+
+describe('blocklist expansion', () => {
+  function wordsOf(tokens: string[]) {
+    return tokens.map((text, i) => ({ text, start: i * 0.5, end: (i + 1) * 0.5 }));
+  }
+
+  function expectAllBlocked(tokens: string[]) {
+    const out = moderateWords(wordsOf(tokens));
+    expect(out.replacements).toBe(tokens.length);
+    for (const w of out.words) {
+      expect(w.text.startsWith('*')).toBe(true);
+    }
+  }
+
+  function expectNoneBlocked(tokens: string[]) {
+    const out = moderateWords(wordsOf(tokens));
+    expect(out.replacements).toBe(0);
+    for (let i = 0; i < tokens.length; i++) {
+      expect(out.words[i]!.text).toBe(tokens[i]);
+    }
+  }
+
+  it('catches gerund forms of joder (jodiendo)', () => {
+    expectAllBlocked(['jodiendo', 'Jodiendo', 'jodiendo,']);
+  });
+
+  it('catches participle forms: jodido/jodida/jodidos/jodidas', () => {
+    expectAllBlocked(['jodido', 'jodida', 'jodidos', 'jodidas']);
+  });
+
+  it('catches present-tense conjugations of joder', () => {
+    expectAllBlocked(['jodo', 'jodes', 'jode', 'joden']);
+  });
+
+  it('catches compound insults built on hijo + puta', () => {
+    expectAllBlocked(['hijoputa', 'hijoputas', 'hijueputa', 'hijueputas', 'hdp']);
+  });
+
+  it('catches gilipollas variants (gilipollez, gilipolleces)', () => {
+    expectAllBlocked(['gilipollas', 'gilipollez', 'gilipolleces', 'gilipollada', 'gilipolladas']);
+  });
+
+  it('catches cabron family including dialectal cabrón', () => {
+    expectAllBlocked(['cabron', 'cabrón', 'cabrones', 'cabrona', 'cabronas', 'cabronazo']);
+  });
+
+  it('catches plurals and derivations of coño and mierda', () => {
+    expectAllBlocked(['coños', 'conos', 'mierdas', 'mierdita', 'mierdoso']);
+  });
+
+  it('catches LatAm dialect: chingar family', () => {
+    expectAllBlocked(['chingar', 'chinga', 'chingada', 'chingadera', 'chingado', 'chingón', 'chingona']);
+  });
+
+  it('catches puto/puta plurals and diminutives', () => {
+    expectAllBlocked(['puta', 'putas', 'puto', 'putos', 'putita', 'putilla', 'putero']);
+  });
+
+  it('catches puñetero/puñetera', () => {
+    expectAllBlocked(['puñetero', 'puñetera', 'puñeteros', 'puneteras']);
+  });
+
+  it('catches cojones and cojonudo', () => {
+    expectAllBlocked(['cojones', 'cojonudo', 'cojonuda', 'cojonazo']);
+  });
+
+  it('catches pendejo family', () => {
+    expectAllBlocked(['pendejo', 'pendeja', 'pendejos', 'pendejas', 'pendejada']);
+  });
+
+  it('catches maricón family', () => {
+    expectAllBlocked(['maricon', 'maricón', 'maricones', 'mariconazo']);
+  });
+
+  it('does NOT block zorra (legitimate fable animal for kids stories)', () => {
+    expectNoneBlocked(['zorra', 'zorras', 'zorro', 'zorros']);
+  });
+
+  it('does NOT block concha (seashell / proper noun)', () => {
+    expectNoneBlocked(['concha', 'conchas']);
+  });
+
+  it('does NOT block pene/penes (biological/educational context)', () => {
+    expectNoneBlocked(['pene', 'penes']);
+  });
+
+  it('catches hostia variants', () => {
+    expectAllBlocked(['hostia', 'hostias', 'hostión', 'hostiazo']);
+  });
+
+  it('catches coger', () => {
+    expectAllBlocked(['coger']);
+  });
+
+  it('does NOT trigger on diputado (substring "puto")', () => {
+    expectNoneBlocked(['diputado', 'diputados', 'diputada', 'diputadas']);
+  });
+
+  it('does NOT trigger on computador/computadora (substring "puta")', () => {
+    expectNoneBlocked(['computador', 'computadora', 'computadores']);
+  });
+
+  it('does NOT trigger on jogger/joggers/jogging', () => {
+    expectNoneBlocked(['jogger', 'joggers', 'jogging']);
+  });
+
+  it('does NOT trigger on dragon-marcos fixture relevant words', () => {
+    expectNoneBlocked([
+      'Marcos', 'bosque', 'dragón', 'dragones', 'escupir', 'llamarada',
+      'dorada', 'castillo', 'amigo', 'amigos', 'creer', 'nubes', 'mamá',
+    ]);
+  });
+
+  it('does NOT trigger on common harmless words that share stems', () => {
+    expectNoneBlocked([
+      'pollito',
+      'pollitos',
+      'cogollo',
+      'escoger',
+      'recoger',
+      'acoger',
+      'polea',
+      'poleas',
+    ]);
+  });
+
+  it('does NOT trigger on words containing "cono" root (cónico, cónica)', () => {
+    expectNoneBlocked(['cónico', 'cónica', 'conocer', 'conocido']);
+  });
+});

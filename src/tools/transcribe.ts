@@ -10,6 +10,13 @@ const InputSchema = z.object({
   /** Override locale. Defaults to bundle.locale. */
   language: z.string().optional(),
   model: z.enum(['tiny', 'base', 'small', 'medium', 'large-v3']).optional(),
+  /**
+   * Minimum per-word whisper confidence in [0,1]. When set, the tool counts
+   * words below this threshold and emits a warning. Guards against silent
+   * hallucinations (e.g. "Marcos" mis-heard as a profanity that moderation
+   * then censors without anyone noticing). Undefined = disabled (back-compat).
+   */
+  minConfidence: z.number().min(0).max(1).optional(),
 }).passthrough();
 
 const OutputSchema = z.object({
@@ -17,18 +24,18 @@ const OutputSchema = z.object({
     text: z.string(),
     start: z.number(),
     end: z.number(),
+    confidence: z.number().optional(),
   })),
   jsonPath: z.string(),
+  /** Non-fatal advisories (e.g. low-confidence word count). */
+  warnings: z.array(z.string()),
+  /** 0 when minConfidence is unset (feature disabled). */
+  lowConfidenceWords: z.number().int().min(0),
 });
 
 type Input = z.infer<typeof InputSchema>;
 type Output = z.infer<typeof OutputSchema>;
 
-/**
- * `transcribe` wraps the Whisper-based SubtitleGenerator as a Tool. It reads
- * bundle.primaryMedia (audio) and emits a word-level transcript used by later
- * steps (moderate-captions, render-slide-video).
- */
 export const transcribeTool: Tool<Input, Output> = {
   name: 'transcribe',
   description: 'Word-level speech-to-text via Whisper. Input: bundle with audio primaryMedia. Output: words[] and cached json path.',
@@ -52,6 +59,22 @@ export const transcribeTool: Tool<Input, Output> = {
       language: lang,
       ...(input.model ? { model: input.model } : {}),
     });
-    return { words, jsonPath };
+
+    const warnings: string[] = [];
+    let lowConfidenceWords = 0;
+    if (input.minConfidence != null) {
+      const threshold = input.minConfidence;
+      for (const w of words) {
+        if (w.confidence != null && w.confidence < threshold) lowConfidenceWords++;
+      }
+      if (lowConfidenceWords > 0) {
+        warnings.push(
+          `${lowConfidenceWords} words with confidence < ${threshold} (possible whisper hallucination)`,
+        );
+        ctx.logger.warn(`  whisper: ${warnings[0]}`);
+      }
+    }
+
+    return { words, jsonPath, warnings, lowConfidenceWords };
   },
 };

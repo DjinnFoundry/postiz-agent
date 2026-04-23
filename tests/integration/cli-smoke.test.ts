@@ -115,6 +115,41 @@ describe('CLI smoke: tools list --json', () => {
   });
 });
 
+describe('CLI smoke: doctor --json', () => {
+  it('returns a well-formed report with expected sections', () => {
+    const { stdout, status } = runCli(['doctor', '--json'], { timeout: 30_000 });
+    const report = JSON.parse(stdout);
+    expect(report).toHaveProperty('generatedAt');
+    expect(report).toHaveProperty('ok');
+    expect(Array.isArray(report.sections)).toBe(true);
+    const names = report.sections.map((s: { name: string }) => s.name);
+    for (const n of ['environment', 'postiz', 'audiokids', 'stuck-slugs', 'recent-failures', 'upload-cache', 'theme-decisions']) {
+      expect(names).toContain(n);
+    }
+    // Exit is 0 or 1 depending on real environment state; both are valid shapes.
+    expect([0, 1]).toContain(status);
+  });
+});
+
+describe('CLI smoke: stats --json --days 7', () => {
+  it('returns totals, byPlatform, topRemediations, topStuck, ctaVariants', () => {
+    const { stdout, status } = runCli(['stats', '--json', '--days', '7']);
+    expect(status).toBe(0);
+    const report = JSON.parse(stdout);
+    expect(report).toHaveProperty('windowDays', 7);
+    expect(report).toHaveProperty('totals');
+    expect(report.totals).toHaveProperty('total');
+    expect(report.totals).toHaveProperty('success');
+    expect(report.totals).toHaveProperty('failed');
+    expect(report.totals).toHaveProperty('skipped');
+    expect(report.totals).toHaveProperty('successRate');
+    expect(report).toHaveProperty('byPlatform');
+    expect(Array.isArray(report.topRemediations)).toBe(true);
+    expect(Array.isArray(report.topStuck)).toBe(true);
+    expect(report).toHaveProperty('ctaVariants');
+  });
+});
+
 describe('CLI smoke: tools describe', () => {
   it('prints full descriptor for a known tool', () => {
     const { stdout, status } = runCli(['tools', 'describe', 'transcribe']);

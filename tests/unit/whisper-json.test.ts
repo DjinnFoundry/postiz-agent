@@ -76,4 +76,35 @@ describe('flattenWords', () => {
     });
     expect(flattenWords(json).map(w => w.word)).toEqual(['a', 'b']);
   });
+
+  it('preserves the per-word probability field when present', () => {
+    const json = baseJson({
+      segments: [
+        {
+          id: 0, start: 0, end: 1, text: 'Marcos',
+          words: [
+            { word: ' Marcos', start: 0, end: 0.4, probability: 0.64 },
+            { word: ' corre', start: 0.4, end: 0.8, probability: 0.98 },
+          ],
+        },
+      ],
+    });
+    const out = flattenWords(json);
+    expect(out).toEqual([
+      { word: 'Marcos', start: 0, end: 0.4, probability: 0.64 },
+      { word: 'corre',  start: 0.4, end: 0.8, probability: 0.98 },
+    ]);
+  });
+
+  it('leaves probability undefined when whisper did not emit it', () => {
+    const json = baseJson({
+      segments: [
+        {
+          id: 0, start: 0, end: 1, text: 'hola',
+          words: [{ word: 'hola', start: 0, end: 0.5 }],
+        },
+      ],
+    });
+    expect(flattenWords(json)[0]!.probability).toBeUndefined();
+  });
 });

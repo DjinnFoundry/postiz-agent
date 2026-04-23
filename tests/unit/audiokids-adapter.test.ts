@@ -1,5 +1,7 @@
-import { describe, it, expect } from 'vitest';
-import { resolve } from 'node:path';
+import { describe, it, expect, afterEach } from 'vitest';
+import { resolve, join } from 'node:path';
+import { mkdtempSync, writeFileSync, rmSync, existsSync, readFileSync, mkdirSync, copyFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { AudioKidsAdapter } from '../../src/adapters/audiokids.js';
 import { ContentBundleSchema, resolveTagline } from '../../src/core/content-bundle.js';
 
@@ -53,6 +55,127 @@ describe('AudioKidsAdapter.loadBundle', () => {
 
   it('throws a clear error when slug does not exist', () => {
     expect(() => adapter.loadBundle('does-not-exist')).toThrowError(/metadata not found/);
+  });
+});
+
+describe('AudioKidsAdapter.loadBundle cover handling (optional)', () => {
+  const tmpDirs: string[] = [];
+
+  afterEach(() => {
+    while (tmpDirs.length) {
+      const d = tmpDirs.pop();
+      if (d && existsSync(d)) rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+  function buildCoverlessFixture(): { dir: string; slug: string } {
+    const dir = mkdtempSync(join(tmpdir(), 'audiokids-adapter-'));
+    tmpDirs.push(dir);
+    const slug = 'sin-cover';
+    const story = {
+      titulo: 'Un cuento sin portada',
+      contenido: 'Había una vez un cuento sin imagen de portada, pero con mucha imaginación.',
+      vocabularioNuevo: [],
+      mood: 'fantasia',
+      meta: {
+        slug,
+        age: 5,
+        mood: 'fantasia',
+        locale: 'es-ES',
+        name: 'Lucia',
+        nivel: 1,
+        model: 'test',
+        wordCount: 12,
+        sentenceCount: 1,
+        avgSentenceLength: 12,
+        estimatedDurationMin: 0.2,
+      },
+    };
+    writeFileSync(join(dir, `${slug}.json`), JSON.stringify(story));
+    writeFileSync(join(dir, `${slug}.mp3`), Buffer.from([0x49, 0x44, 0x33]));
+    return { dir, slug };
+  }
+
+  it('returns a bundle WITHOUT cover when all candidates miss, instead of throwing', () => {
+    const { dir, slug } = buildCoverlessFixture();
+    const adapter = new AudioKidsAdapter(dir);
+    const bundle = adapter.loadBundle(slug);
+    expect(bundle.cover).toBeUndefined();
+    expect(bundle.text.title).toBe('Un cuento sin portada');
+    expect(() => ContentBundleSchema.parse(bundle)).not.toThrow();
+  });
+
+  it('placeholder NOT generated when flag is false (default)', () => {
+    const { dir, slug } = buildCoverlessFixture();
+    const adapter = new AudioKidsAdapter(dir);
+    const bundle = adapter.loadBundle(slug);
+    expect(bundle.cover).toBeUndefined();
+    const expectedSvg = resolve(__dirname, '../..', 'data', 'covers', `${slug}.svg`);
+    expect(existsSync(expectedSvg)).toBe(false);
+  });
+
+  it('placeholder generation produces an SVG when enabled', () => {
+    const { dir, slug } = buildCoverlessFixture();
+    const placeholderDir = mkdtempSync(join(tmpdir(), 'audiokids-covers-'));
+    tmpDirs.push(placeholderDir);
+    const adapter = new AudioKidsAdapter(dir, { generatePlaceholder: true, placeholderDir });
+    const bundle = adapter.loadBundle(slug);
+    expect(bundle.cover).toBeDefined();
+    expect(bundle.cover).toMatch(/\.svg$/);
+    expect(existsSync(bundle.cover!)).toBe(true);
+    const svg = readFileSync(bundle.cover!, 'utf-8');
+    expect(svg).toMatch(/Un cuento sin/);
+    expect(svg).toMatch(/portada/);
+    expect(svg).toMatch(/width="1080"/);
+    expect(svg).toMatch(/height="1080"/);
+  });
+
+  it('still finds real cover next to the json when present (fixture path)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'audiokids-adapter-real-'));
+    tmpDirs.push(dir);
+    const slug = 'con-cover';
+    const story = {
+      titulo: 'Con portada',
+      contenido: 'Texto mínimo para validar el cuento con portada.',
+      vocabularioNuevo: [],
+      mood: 'aventura',
+      meta: {
+        slug, age: 5, mood: 'aventura', locale: 'es-ES', name: 'Leo', nivel: 1,
+        model: 'test', wordCount: 8, sentenceCount: 1, avgSentenceLength: 8,
+        estimatedDurationMin: 0.1,
+      },
+    };
+    writeFileSync(join(dir, `${slug}.json`), JSON.stringify(story));
+    writeFileSync(join(dir, `${slug}.mp3`), Buffer.from([0x49, 0x44, 0x33]));
+    const fixtureCover = resolve(__dirname, '../fixtures/audiokids-output/dragon-marcos-cover.png');
+    copyFileSync(fixtureCover, join(dir, `${slug}-cover.png`));
+    const adapter = new AudioKidsAdapter(dir);
+    const bundle = adapter.loadBundle(slug);
+    expect(bundle.cover).toMatch(/con-cover-cover\.png$/);
+  });
+});
+
+describe('generateCoverSvg (cover placeholder)', () => {
+  it('produces a 1080x1080 SVG with the title embedded', async () => {
+    const { generateCoverSvg } = await import('../../src/adapters/cover-placeholder.js');
+    const svg = generateCoverSvg({ slug: 'abc', title: 'Hola Mundo', mood: 'fantasia' });
+    expect(svg).toMatch(/<svg[^>]*width="1080"/);
+    expect(svg).toMatch(/height="1080"/);
+    expect(svg).toMatch(/Hola Mundo/);
+    expect(svg).toMatch(/#F1E8D8/);
+  });
+
+  it('falls back to default palette for unknown mood', async () => {
+    const { generateCoverSvg } = await import('../../src/adapters/cover-placeholder.js');
+    const svg = generateCoverSvg({ slug: 'x', title: 'T', mood: 'mood-inexistente' });
+    expect(svg).toMatch(/#F5ECDB/);
+  });
+
+  it('escapes XML-sensitive characters in title', async () => {
+    const { generateCoverSvg } = await import('../../src/adapters/cover-placeholder.js');
+    const svg = generateCoverSvg({ slug: 'x', title: 'A & B <C>', mood: 'calma' });
+    expect(svg).toMatch(/A &amp; B &lt;C&gt;/);
+    expect(svg).not.toMatch(/A & B <C>/);
   });
 });
 
