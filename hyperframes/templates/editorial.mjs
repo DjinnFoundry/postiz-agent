@@ -328,14 +328,39 @@ ${useMonoPrompt ? `
   .terminal-cursor { animation: none !important; opacity: 1; }
 }
 
-${useDropCap ? `
+${useDropCap && hints.illuminatedCap ? `
+.drop-cap {
+  position: relative;
+  float: left; display: block;
+  font-family: var(--font-display); font-weight: 900;
+  font-size: ${dropCapSize}px; line-height: 0.85;
+  background-image: linear-gradient(135deg, var(--accent) 0%, var(--highlight) 55%, var(--accent) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.18), 0 0 1px rgba(255, 255, 255, 0.25);
+  margin: 0.05em 0.12em 0 0;
+  ${hints.illuminatedCap.border ? 'padding: 0.08em 0.12em; border: 4px double var(--accent); border-radius: 12px;' : ''}
+  z-index: 0;
+}
+.drop-cap::before {
+  content: "";
+  position: absolute;
+  inset: -0.18em;
+  z-index: -1;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'><g fill='none' stroke='%238A681A' stroke-width='1.6' opacity='0.55'><path d='M8 8 Q28 2 48 8 T88 8 Q108 2 112 16'/><path d='M8 112 Q28 118 48 112 T88 112 Q108 118 112 104'/><path d='M8 8 Q2 28 8 48 T8 88 Q2 108 16 112'/><path d='M112 8 Q118 28 112 48 T112 88 Q118 108 104 112'/><circle cx='12' cy='12' r='3' fill='%23DDB25E'/><circle cx='108' cy='12' r='3' fill='%23DDB25E'/><circle cx='12' cy='108' r='3' fill='%23DDB25E'/><circle cx='108' cy='108' r='3' fill='%23DDB25E'/><path d='M60 4 Q66 14 60 24 Q54 14 60 4' fill='%23DDB25E' stroke='none' opacity='0.7'/><path d='M60 116 Q66 106 60 96 Q54 106 60 116' fill='%23DDB25E' stroke='none' opacity='0.7'/></g></svg>");
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  border-radius: 14px;
+  opacity: 0.85;
+}` : useDropCap ? `
 .drop-cap {
   float: left; display: block;
   font-family: var(--font-display); font-weight: 900;
   font-size: ${dropCapSize}px; line-height: 0.85;
   color: var(--accent);
   margin: 0.05em 0.12em 0 0;
-  ${hints.illuminatedCap?.border ? 'padding: 0.08em 0.12em; border: 4px double var(--accent); border-radius: 12px;' : ''}
 }` : ''}
 
 ${useLetterbox ? `

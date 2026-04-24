@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { runCtaAb, formatCtaAbReport } from '../../src/cli/cta-ab.js';
 import type { DecisionLogEntry, Platform, PublishResult } from '../../src/types.js';
 
@@ -178,5 +181,128 @@ describe('formatCtaAbReport', () => {
     const report = await runCtaAb({ now: NOW, decisions: [], days: 30 });
     const text = formatCtaAbReport(report);
     expect(text.toLowerCase()).toContain('none');
+  });
+});
+
+function writeIngest(lines: string[]): string {
+  const dir = mkdtempSync(join(tmpdir(), 'cta-ab-ingest-'));
+  const file = join(dir, 'engagement.jsonl');
+  writeFileSync(file, lines.join('\n') + '\n', 'utf-8');
+  return file;
+}
+
+describe('runCtaAb --ingest', () => {
+  it('merges engagement averages into the matching variant', async () => {
+    const decisions: DecisionLogEntry[] = [
+      entry({ slug: 's1', platform: 'instagram', hoursAgo: 1, success: true, ctaVariant: 'ig-bio', postId: 'p1', url: 'https://ig/1' }),
+      entry({ slug: 's2', platform: 'instagram', hoursAgo: 2, success: true, ctaVariant: 'ig-bio', postId: 'p2', url: 'https://ig/2' }),
+      entry({ slug: 's3', platform: 'instagram', hoursAgo: 3, success: true, ctaVariant: 'ig-bio', postId: 'p3', url: 'https://ig/3' }),
+    ];
+    const ingestFile = writeIngest([
+      JSON.stringify({ postId: 'p1', platform: 'instagram', engagement: { views: 1000, likes: 30, comments: 2 }, recordedAt: '2026-04-20T10:00:00Z' }),
+      JSON.stringify({ postId: 'p2', platform: 'instagram', engagement: { views: 2000, likes: 60, comments: 4 }, recordedAt: '2026-04-20T10:00:00Z' }),
+      JSON.stringify({ postId: 'p3', platform: 'instagram', engagement: { views: 3000, likes: 90, comments: 6 }, recordedAt: '2026-04-20T10:00:00Z' }),
+    ]);
+
+    const report = await runCtaAb({ now: NOW, decisions, days: 30, ingestFile });
+    expect(report.ingestApplied).toBe(true);
+    expect(report.ingestFile).toBe(ingestFile);
+
+    const bio = report.platforms.instagram!.variants.find(v => v.id === 'ig-bio')!;
+    expect(bio.avgEngagement).toBeDefined();
+    expect(bio.avgEngagement!.avgViews).toBe(2000);
+    expect(bio.avgEngagement!.avgLikes).toBe(60);
+    expect(bio.avgEngagement!.avgComments).toBe(4);
+    expect(bio.avgEngagement!.sampleSize).toBe(3);
+  });
+
+  it('leaves avgEngagement undefined for variants without matching records', async () => {
+    const decisions: DecisionLogEntry[] = [
+      entry({ slug: 'a', platform: 'x', hoursAgo: 1, success: true, ctaVariant: 'x-try', postId: 'a1' }),
+    ];
+    const ingestFile = writeIngest([
+      JSON.stringify({ postId: 'unrelated', platform: 'x', engagement: { views: 100 }, recordedAt: '2026-04-20T10:00:00Z' }),
+    ]);
+    const report = await runCtaAb({ now: NOW, decisions, days: 30, ingestFile });
+    expect(report.ingestApplied).toBe(true);
+    const xTry = report.platforms.x!.variants.find(v => v.id === 'x-try')!;
+    expect(xTry.avgEngagement).toBeUndefined();
+  });
+
+  it('skips ingest records whose postId is not present in the decision log', async () => {
+    const decisions: DecisionLogEntry[] = [
+      entry({ slug: 'a', platform: 'instagram', hoursAgo: 1, success: true, ctaVariant: 'ig-bio', postId: 'known' }),
+    ];
+    const ingestFile = writeIngest([
+      JSON.stringify({ postId: 'known', platform: 'instagram', engagement: { views: 1000, likes: 10 }, recordedAt: '2026-04-20T10:00:00Z' }),
+      JSON.stringify({ postId: 'ghost', platform: 'instagram', engagement: { views: 9999, likes: 9999 }, recordedAt: '2026-04-20T10:00:00Z' }),
+    ]);
+    const warnings: string[] = [];
+    const warnSpy = (msg: unknown) => { warnings.push(String(msg)); };
+    const originalWarn = console.warn;
+    console.warn = warnSpy;
+    try {
+      const report = await runCtaAb({ now: NOW, decisions, days: 30, ingestFile });
+      const bio = report.platforms.instagram!.variants.find(v => v.id === 'ig-bio')!;
+      expect(bio.avgEngagement!.sampleSize).toBe(1);
+      expect(bio.avgEngagement!.avgViews).toBe(1000);
+      expect(warnings.some(w => w.includes('ghost'))).toBe(true);
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  it('skips malformed JSONL lines and processes the rest', async () => {
+    const decisions: DecisionLogEntry[] = [
+      entry({ slug: 'a', platform: 'instagram', hoursAgo: 1, success: true, ctaVariant: 'ig-bio', postId: 'p1' }),
+    ];
+    const ingestFile = writeIngest([
+      '{not valid json',
+      JSON.stringify({ postId: 'p1', platform: 'instagram', engagement: { views: 500, likes: 20 }, recordedAt: '2026-04-20T10:00:00Z' }),
+      '',
+    ]);
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (msg: unknown) => { warnings.push(String(msg)); };
+    try {
+      const report = await runCtaAb({ now: NOW, decisions, days: 30, ingestFile });
+      const bio = report.platforms.instagram!.variants.find(v => v.id === 'ig-bio')!;
+      expect(bio.avgEngagement!.sampleSize).toBe(1);
+      expect(bio.avgEngagement!.avgViews).toBe(500);
+      expect(warnings.some(w => w.toLowerCase().includes('malformed') || w.toLowerCase().includes('invalid'))).toBe(true);
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  it('treats missing engagement keys as 0 for that metric in the average', async () => {
+    const decisions: DecisionLogEntry[] = [
+      entry({ slug: 's1', platform: 'instagram', hoursAgo: 1, success: true, ctaVariant: 'ig-bio', postId: 'p1' }),
+      entry({ slug: 's2', platform: 'instagram', hoursAgo: 2, success: true, ctaVariant: 'ig-bio', postId: 'p2' }),
+    ];
+    const ingestFile = writeIngest([
+      JSON.stringify({ postId: 'p1', platform: 'instagram', engagement: { views: 1000, likes: 40 }, recordedAt: '2026-04-20T10:00:00Z' }),
+      JSON.stringify({ postId: 'p2', platform: 'instagram', engagement: {}, recordedAt: '2026-04-20T10:00:00Z' }),
+    ]);
+    const report = await runCtaAb({ now: NOW, decisions, days: 30, ingestFile });
+    const bio = report.platforms.instagram!.variants.find(v => v.id === 'ig-bio')!;
+    expect(bio.avgEngagement!.sampleSize).toBe(2);
+    expect(bio.avgEngagement!.avgViews).toBe(500);
+    expect(bio.avgEngagement!.avgLikes).toBe(20);
+    expect(bio.avgEngagement!.avgComments).toBe(0);
+  });
+
+  it('formatCtaAbReport renders engagement line when avgEngagement is present', async () => {
+    const decisions: DecisionLogEntry[] = [
+      entry({ slug: 's1', platform: 'instagram', hoursAgo: 1, success: true, ctaVariant: 'ig-bio', postId: 'p1', url: 'https://ig/1' }),
+    ];
+    const ingestFile = writeIngest([
+      JSON.stringify({ postId: 'p1', platform: 'instagram', engagement: { views: 1200, likes: 45, comments: 3 }, recordedAt: '2026-04-20T10:00:00Z' }),
+    ]);
+    const report = await runCtaAb({ now: NOW, decisions, days: 30, ingestFile });
+    const text = formatCtaAbReport(report);
+    expect(text).toContain('1200');
+    expect(text).toContain('45');
+    expect(text).toContain('n=1');
   });
 });

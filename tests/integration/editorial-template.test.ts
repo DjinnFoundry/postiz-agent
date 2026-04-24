@@ -123,6 +123,37 @@ describe('editorial.mjs theme-specific markers', () => {
     expect(html).not.toContain('border: 4px double');
   });
 
+  it('medieval-manuscript drop cap uses gold gradient with background-clip text', () => {
+    const { html } = runEditorial(payloadFor('medieval-manuscript', ASPECTS[0]));
+    const dropCapCss = html.match(/\.drop-cap\s*{[^}]*}/s);
+    expect(dropCapCss).toBeTruthy();
+    const block = dropCapCss![0];
+    expect(block).toMatch(/linear-gradient\(/);
+    expect(block).toMatch(/background-clip:\s*text/);
+    expect(block).toMatch(/-webkit-background-clip:\s*text/);
+    expect(block).toMatch(/color:\s*transparent/);
+    expect(block).toMatch(/var\(--accent\)/);
+    expect(block).toMatch(/var\(--highlight\)/);
+    expect(block).not.toMatch(/color:\s*var\(--accent\)\s*;/);
+  });
+
+  it('academic-dropcap drop cap uses a simple accent color without gradient', () => {
+    const { html } = runEditorial(payloadFor('academic-dropcap', ASPECTS[0]));
+    const dropCapCss = html.match(/\.drop-cap\s*{[^}]*}/s);
+    expect(dropCapCss).toBeTruthy();
+    const block = dropCapCss![0];
+    expect(block).toMatch(/color:\s*var\(--accent\)/);
+    expect(block).not.toMatch(/linear-gradient\(/);
+    expect(block).not.toMatch(/background-clip:\s*text/);
+  });
+
+  it('medieval-manuscript drop cap renders an ornamental SVG filigree that academic does not', () => {
+    const { html: medievalHtml } = runEditorial(payloadFor('medieval-manuscript', ASPECTS[0]));
+    expect(medievalHtml).toMatch(/\.drop-cap::before\s*{[^}]*background-image:\s*url\("data:image\/svg\+xml/s);
+    const { html: academicHtml } = runEditorial(payloadFor('academic-dropcap', ASPECTS[0]));
+    expect(academicHtml).not.toMatch(/\.drop-cap::before\s*{/);
+  });
+
   it('medieval-manuscript emits SVG corner ornaments with the accent color', () => {
     const catalog = loadCatalog();
     const treatment = catalog.treatments.find(t => t.id === 'medieval-manuscript')!;

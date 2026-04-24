@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { resolveTheme } from '../theme/resolver.js';
-import { ThemeDecisionStore } from '../theme/catalog.js';
+import { ThemeDecisionStore, loadCatalog } from '../theme/catalog.js';
 import type { Tool } from '../core/tool.js';
 
 const InputSchema = z.object({
@@ -97,7 +97,6 @@ export const chooseThemeTool: Tool<ChooseInput, ChooseOutput> = {
   ],
 
   async preflight(input) {
-    const { loadCatalog } = await import('../theme/catalog.js');
     const catalog = loadCatalog();
     const treatmentIds = new Set(catalog.treatments.map(t => t.id));
     if (!treatmentIds.has(input.treatmentId)) {

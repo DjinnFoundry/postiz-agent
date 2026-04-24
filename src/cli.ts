@@ -9,7 +9,7 @@ import { PostizClient } from './platforms/postiz.js';
 import { config } from './config.js';
 import { validateSlug } from './lib/slug.js';
 import { assertSafeBundlePath } from './lib/safe-path.js';
-import { listCandidates, selectNextStory, type StuckSlugInfo } from './dispatch.js';
+import { listCandidates, selectNextStory, findStuckSlugs, type StuckSlugInfo } from './dispatch.js';
 import { AudioKidsAdapter } from './adapters/audiokids.js';
 import { PipelineRunner, PipelineSpecSchema, type PipelineSpec } from './core/pipeline.js';
 import { createDefaultRegistry } from './tools/index.js';
@@ -30,6 +30,8 @@ import {
 } from './cli/themes.js';
 import { generateGallery, formatGalleryResult, type GalleryAspect } from './cli/gallery.js';
 import { formatToolDescribeHuman, formatToolsDocsIndex, formatToolDocs } from './cli/tools-docs.js';
+import { pruneRenderLogs, pruneUploadCache } from './cli/housekeeping.js';
+import { buildCaptionRich } from './copy/caption-builder.js';
 
 const program = new Command();
 
@@ -237,7 +239,6 @@ Examples:
     if (opts.stuck) {
       const all = log.list({});
       const platforms = (Object.values(PlatformSchema.enum)) as Platform[];
-      const { findStuckSlugs } = await import('./dispatch.js');
       const stuck = findStuckSlugs(all, platforms);
       if (opts.json) {
         process.stdout.write(JSON.stringify(stuck) + '\n');
@@ -395,15 +396,17 @@ program
   .option('--days <n>', 'window in days', '30')
   .option('--platform <platform>', 'filter to a single platform (x, tiktok, instagram, youtube)')
   .option('--json', 'emit the report as JSON', false)
-  .option('--ingest <file>', 'JSONL engagement file (postId,engagement,recordedAt) — parsing not yet wired')
+  .option('--ingest <file>', 'JSONL engagement file {postId, platform, engagement, recordedAt}; merges avg views/likes/comments per variant')
   .addHelpText('after', `
 Complements 'stats' by zooming into CTA variant performance. Each variant shows
 uses in the window (success + failed), success rate, and the first 3 post URLs
 so you can open the winners and losers in a browser. Always exits 0.
 
-The --ingest flag is accepted today but engagement aggregation is not yet wired:
-the follow-up ingester reads YouTubeCLI exports (and similar) and joins them
-onto decision-log postIds so 'avgEngagement' appears per variant.
+With --ingest <file.jsonl>, each line {postId, platform, engagement, recordedAt}
+is joined against the decision log (via result.postId) and averaged into the
+matching CTA variant as avgEngagement {avgViews, avgLikes, avgComments,
+avgShares, sampleSize}. Records whose postId is not in the log are skipped with
+a warning; malformed JSONL lines are skipped, remaining lines still process.
 `)
   .action(async (opts: { days?: string; platform?: string; json?: boolean; ingest?: string }) => {
     const days = opts.days ? Number.parseInt(opts.days, 10) : 30;
@@ -533,7 +536,6 @@ program.commands.find(c => c.name() === 'copy')!
       ].join('\n'));
       process.exit(0);
     }
-    const { buildCaptionRich } = await import('./copy/caption-builder.js');
     const bundle = resolveBundle(opts);
     const platforms: Platform[] = opts.platform
       ? [opts.platform as Platform]
@@ -601,7 +603,6 @@ Examples:
   postiz-agent logs prune --older-than-days 7
 `)
   .action(async (opts: { olderThanDays?: string; dryRun?: boolean; json?: boolean }) => {
-    const { pruneRenderLogs } = await import('./cli/housekeeping.js');
     const days = opts.olderThanDays ? Number.parseInt(opts.olderThanDays, 10) : undefined;
     if (days !== undefined && (!Number.isFinite(days) || days < 0)) {
       console.error(`invalid --older-than-days value: ${opts.olderThanDays}`);
@@ -633,7 +634,6 @@ Examples:
   postiz-agent cache prune
 `)
   .action(async (opts: { dryRun?: boolean; json?: boolean }) => {
-    const { pruneUploadCache } = await import('./cli/housekeeping.js');
     const result = pruneUploadCache({ dryRun: opts.dryRun });
     if (opts.json) {
       process.stdout.write(JSON.stringify(result) + '\n');

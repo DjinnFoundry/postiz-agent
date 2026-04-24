@@ -7,6 +7,10 @@ import type { Platform } from '../types.js';
 
 // Postiz uses these identifiers in its `integration` field when creating posts.
 // See https://docs.postiz.com/public-api/providers/
+// spotify is mapped to null (not Exclude<Platform, 'spotify'>) so the Record stays
+// total and the runtime guard in findIntegration() is the single source of truth:
+// Orchestrator routes spotify to SpotifyRssBuilder upstream, so createPost() never
+// sees it. A stricter type would duplicate that guard without catching more bugs.
 const POSTIZ_PROVIDER_KEY: Record<Platform, string | null> = {
   x: 'x',
   tiktok: 'tiktok',

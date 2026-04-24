@@ -177,6 +177,17 @@ describe('CLI smoke: cta-ab --json --days 30', () => {
       }
     }
   });
+
+  it('accepts --ingest and reports ingestApplied=true with the file path echoed back', () => {
+    const tmpFile = resolve(ROOT, 'tmp', 'cta-ab-ingest-smoke.jsonl');
+    mkdirSync(resolve(ROOT, 'tmp'), { recursive: true });
+    writeFileSync(tmpFile, '', 'utf-8');
+    const { stdout, status } = runCli(['cta-ab', '--json', '--days', '30', '--ingest', tmpFile]);
+    expect(status).toBe(0);
+    const report = JSON.parse(stdout);
+    expect(report.ingestApplied).toBe(true);
+    expect(report.ingestFile).toBe(tmpFile);
+  });
 });
 
 describe('CLI smoke: decisions --run-id', () => {
