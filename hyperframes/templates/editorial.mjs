@@ -15,7 +15,7 @@
  * Output: writes index.html to <cwd>. One template, twelve treatments. Each
  * treatment picks its own background, markup decorations, and word animation
  * flavour via the `layoutHints` block. Invariant: body text never renders below
- * the MIN_BODY_PX floor — checked before rendering so linter catches violations.
+ * the MIN_BODY_PX floor (checked before rendering so linter catches violations).
  */
 import { writeFileSync } from 'node:fs';
 import {
@@ -98,7 +98,7 @@ function renderFolio(n, style) {
     case 'doodle':   return `<div class="folio folio-doodle">~ ${padded} ~</div>`;
     case 'ornate':   return `<div class="folio folio-ornate">§ ${padded} §</div>`;
     case 'bracket':  return `<div class="folio folio-bracket">[ PAGE ${padded} ]</div>`;
-    case 'classic':  return `<div class="folio folio-classic">— ${padded} —</div>`;
+    case 'classic':  return `<div class="folio folio-classic">- ${padded} -</div>`;
     default: return '';
   }
 }
@@ -205,7 +205,15 @@ html, body { width: ${width}px; height: ${height}px; overflow: hidden; backgroun
   text-align: ${textAlign};
   ${textAlign === 'justify' ? 'hyphens: auto;' : ''}
 }
-.w { color: var(--muted); }
+.w {
+  color: var(--muted);
+  display: inline-block;
+  transition: color 0.18s ease, font-weight 0.18s ease, transform 0.18s ease;
+}
+.w.active {
+  font-weight: 700;
+  transform: scale(1.05);
+}
 
 .prompt { color: var(--accent); font-family: var(--font-folio); }
 
@@ -399,6 +407,64 @@ ${useScrollBorders ? `
   letter-spacing: 4px; text-transform: uppercase;
   color: var(--accent); padding: 10px 20px;
   border: 2px solid var(--accent); border-radius: 999px;
+}
+.part-ribbon-medieval {
+  font-family: var(--font-display);
+  letter-spacing: 6px;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: none;
+  border-top: 2px double var(--accent);
+  border-bottom: 2px double var(--accent);
+  border-radius: 0;
+  padding: 8px 28px;
+  background: transparent;
+}
+.part-ribbon-terminal {
+  font-family: var(--font-folio);
+  letter-spacing: 2px;
+  text-transform: none;
+  color: var(--accent);
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 8px 14px;
+  font-size: 20px;
+}
+.part-ribbon-epic {
+  font-family: var(--font-display);
+  letter-spacing: 10px;
+  text-transform: uppercase;
+  color: var(--ink);
+  border: none;
+  border-radius: 0;
+  padding: 6px 0;
+  background: transparent;
+  font-weight: 700;
+}
+.part-ribbon-pop {
+  font-family: var(--font-body);
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: none;
+  color: var(--bg);
+  background: var(--accent);
+  border: 3px solid var(--ink);
+  border-radius: 999px;
+  padding: 10px 22px;
+  font-size: 24px;
+}
+.part-ribbon-scroll {
+  font-family: var(--font-display);
+  font-style: italic;
+  letter-spacing: 2px;
+  text-transform: none;
+  color: var(--accent);
+  border: none;
+  border-radius: 0;
+  padding: 6px 18px;
+  background: transparent;
+  font-size: 26px;
 }
 `;
 

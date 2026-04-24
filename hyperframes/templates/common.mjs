@@ -104,10 +104,11 @@ export function escHtml(s) {
 }
 
 /**
- * Emit GSAP `set` calls that recolour each word on its timeline moment:
- *   at word.start: word becomes active (activeColor)
- *   at word.end:   word becomes past (pastColor)
- * All default initial state is mutedColor (future tense), set via CSS.
+ * Emit GSAP `set` calls that recolour each word on its timeline moment and
+ * toggle an `active` class so CSS can layer extra presence (weight, scale).
+ *   at word.start: colour -> activeColor, class += active
+ *   at word.end:   colour -> pastColor,   class -= active
+ * Default initial state is muted (future tense) via CSS.
  */
 export function emitWordColorTimeline(pages, { activeColor, pastColor, headSec = HEAD_SEC }) {
   const lines = [];
@@ -117,22 +118,59 @@ export function emitWordColorTimeline(pages, { activeColor, pastColor, headSec =
       const startAbs = (headSec + t.start).toFixed(3);
       const endAbs = (headSec + t.end).toFixed(3);
       lines.push(`  tl.set("${selector}", { color: "${activeColor}" }, ${startAbs});`);
+      lines.push(`  tl.set("${selector}", { className: "+=active" }, ${startAbs});`);
       lines.push(`  tl.set("${selector}", { color: "${pastColor}" }, ${endAbs});`);
+      lines.push(`  tl.set("${selector}", { className: "-=active" }, ${endAbs});`);
     });
   });
   return lines.join('\n');
 }
 
+const ROMAN_NUMERALS = [
+  ['C', 100], ['XC', 90], ['L', 50], ['XL', 40],
+  ['X', 10], ['IX', 9], ['V', 5], ['IV', 4], ['I', 1],
+];
+
+export function roman(n) {
+  let value = Math.max(0, Math.floor(Number(n)));
+  let out = '';
+  for (const [glyph, weight] of ROMAN_NUMERALS) {
+    while (value >= weight) { out += glyph; value -= weight; }
+  }
+  return out || 'I';
+}
+
+export function pad2(n) {
+  return String(Math.floor(Number(n))).padStart(2, '0');
+}
+
 /**
- * Return a small HTML ribbon string like `PARTE 1 / 3` when the payload is a
- * multi-part publish. Returns an empty string for single-part payloads so
- * callers can inline it unconditionally.
+ * Return an HTML ribbon string for multi-part publishes, styled by the active
+ * treatment. Returns an empty string for single-part payloads so callers can
+ * inline unconditionally. Signature accepts the story payload; treatment is
+ * read from `payload.theme.treatment.id` when present, otherwise defaults to
+ * the classic pill.
  */
 export function renderPartRibbon(payload) {
   if (!payload?.partIndex || !payload?.partTotal || payload.partTotal <= 1) return '';
   const idx = Number(payload.partIndex);
   const total = Number(payload.partTotal);
-  return `<div class="part-ribbon">PARTE ${idx} / ${total}</div>`;
+  const treatmentId = payload?.theme?.treatment?.id ?? '';
+  switch (treatmentId) {
+    case 'medieval-manuscript':
+      return `<div class="part-ribbon part-ribbon-medieval">CAPÍTULO ${roman(idx)} de ${roman(total)}</div>`;
+    case 'terminal-crt':
+      return `<div class="part-ribbon part-ribbon-terminal">[PART ${pad2(idx)}/${pad2(total)}]</div>`;
+    case 'epic-cinematic':
+      return `<div class="part-ribbon part-ribbon-epic">PARTE ${roman(idx)} · ${roman(total)}</div>`;
+    case 'storybook-pop':
+    case 'crayon-doodle':
+      return `<div class="part-ribbon part-ribbon-pop">Parte ${idx} / ${total}</div>`;
+    case 'mythic-scroll':
+      return `<div class="part-ribbon part-ribbon-scroll">~ parte ${idx} de ${total} ~</div>`;
+    default:
+      return `<div class="part-ribbon">PARTE ${idx} / ${total}</div>`;
+  }
 }
 
 export function renderCornerOrnaments({ accent, size = 180 }) {

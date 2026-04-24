@@ -36,7 +36,11 @@ function runEditorial(payload: unknown): { html: string; stdout: string } {
   }
 }
 
-function payloadFor(treatmentId: string, aspect: { width: number; height: number }) {
+function payloadFor(
+  treatmentId: string,
+  aspect: { width: number; height: number },
+  extra: Record<string, unknown> = {},
+) {
   const catalog = loadCatalog();
   const treatment = catalog.treatments.find(t => t.id === treatmentId)!;
   const palette = catalog.palettes.find(p => p.id === treatment.palettes[0])!;
@@ -49,6 +53,7 @@ function payloadFor(treatmentId: string, aspect: { width: number; height: number
     width: aspect.width,
     height: aspect.height,
     theme: { treatment, palette, fontPairing, source: 'explicit' },
+    ...extra,
   };
 }
 
@@ -227,5 +232,75 @@ describe('editorial.mjs polish: terminal cursor, end-card, reduced motion', () =
   it('rose-stamp CSS includes prefers-reduced-motion guard', () => {
     const { html } = runEditorial(payloadFor('rose-stamp', ASPECTS[0]));
     expect(html).toContain('prefers-reduced-motion: reduce');
+  });
+});
+
+describe('editorial.mjs part-ribbon styling by treatment', () => {
+  const multipart = { partIndex: 1, partTotal: 3 };
+
+  it('medieval-manuscript multipart emits roman-numeral chapter ribbon', () => {
+    const { html } = runEditorial(payloadFor('medieval-manuscript', ASPECTS[0], multipart));
+    expect(html).toContain('part-ribbon-medieval');
+    expect(html).toContain('CAPÍTULO I de III');
+  });
+
+  it('terminal-crt multipart emits monospace bracketed ribbon', () => {
+    const { html } = runEditorial(payloadFor('terminal-crt', ASPECTS[0], multipart));
+    expect(html).toContain('part-ribbon-terminal');
+    expect(html).toContain('[PART 01/03]');
+  });
+
+  it('epic-cinematic multipart emits roman caps with middot separator', () => {
+    const { html } = runEditorial(payloadFor('epic-cinematic', ASPECTS[0], multipart));
+    expect(html).toContain('part-ribbon-epic');
+    expect(html).toContain('PARTE I · III');
+  });
+
+  it('storybook-pop multipart emits rounded pop ribbon', () => {
+    const { html } = runEditorial(payloadFor('storybook-pop', ASPECTS[0], multipart));
+    expect(html).toContain('part-ribbon-pop');
+    expect(html).toContain('Parte 1 / 3');
+  });
+
+  it('crayon-doodle multipart emits rounded pop ribbon', () => {
+    const { html } = runEditorial(payloadFor('crayon-doodle', ASPECTS[0], multipart));
+    expect(html).toContain('part-ribbon-pop');
+    expect(html).toContain('Parte 1 / 3');
+  });
+
+  it('mythic-scroll multipart emits italic scroll ribbon with adornments', () => {
+    const { html } = runEditorial(payloadFor('mythic-scroll', ASPECTS[0], multipart));
+    expect(html).toContain('part-ribbon-scroll');
+    expect(html).toContain('~ parte 1 de 3 ~');
+  });
+
+  it('hero-display multipart falls back to default pill ribbon', () => {
+    const { html } = runEditorial(payloadFor('hero-display', ASPECTS[0], multipart));
+    expect(html).toContain('<div class="part-ribbon">');
+    expect(html).toContain('PARTE 1 / 3');
+    expect(html).not.toContain('<div class="part-ribbon part-ribbon-medieval">');
+    expect(html).not.toContain('<div class="part-ribbon part-ribbon-terminal">');
+    expect(html).not.toContain('<div class="part-ribbon part-ribbon-epic">');
+    expect(html).not.toContain('<div class="part-ribbon part-ribbon-pop">');
+    expect(html).not.toContain('<div class="part-ribbon part-ribbon-scroll">');
+  });
+
+  it('single-part payload emits no ribbon markup in any treatment', () => {
+    const { html } = runEditorial(payloadFor('medieval-manuscript', ASPECTS[0]));
+    expect(html).not.toMatch(/<div class="part-ribbon[^"]*">/);
+  });
+});
+
+describe('editorial.mjs word highlighting weight + scale shift', () => {
+  it('CSS defines an .w.active rule with bolder weight and slight scale', () => {
+    const { html } = runEditorial(payloadFor('hero-display', ASPECTS[0]));
+    expect(html).toMatch(/\.w\.active\s*{[^}]*font-weight:\s*700/);
+    expect(html).toMatch(/\.w\.active\s*{[^}]*scale\(1\.05\)/);
+  });
+
+  it('GSAP timeline toggles the active class on word spans', () => {
+    const { html } = runEditorial(payloadFor('hero-display', ASPECTS[0]));
+    expect(html).toMatch(/tl\.set\("#page-\d+ \[data-word='\d+'\]", \{ className: "\+=active" \}/);
+    expect(html).toMatch(/tl\.set\("#page-\d+ \[data-word='\d+'\]", \{ className: "-=active" \}/);
   });
 });
