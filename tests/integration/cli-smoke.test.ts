@@ -88,6 +88,53 @@ describe('CLI smoke: publish accepts --bundle-file (no AudioKids needed)', () =>
   });
 });
 
+describe('CLI smoke: tenants list', () => {
+  it('returns at least the default tenant as JSON', () => {
+    const { stdout, status } = runCli(['tenants', 'list', '--json']);
+    expect(status).toBe(0);
+    const list = JSON.parse(stdout);
+    expect(Array.isArray(list)).toBe(true);
+    const def = list.find((t: { slug: string }) => t.slug === 'default');
+    expect(def).toBeDefined();
+    expect(def).toHaveProperty('dataDir');
+    expect(def).toHaveProperty('postizApiUrl');
+  });
+});
+
+describe('CLI smoke: publish --tenant isolates data dir', () => {
+  it('persists the decision under data/<tenant>/decisions.jsonl', () => {
+    const tenantSlug = 'smoke-tenant';
+    const tenantDataDir = resolve(ROOT, 'data', tenantSlug);
+    // Clean up any previous run
+    try { runCli(['tenants', 'list']); } catch { /* noop */ }
+    const bundlePath = resolve(ROOT, 'tmp', 'smoke-tenant-bundle.json');
+    mkdirSync(resolve(ROOT, 'tmp'), { recursive: true });
+    writeFileSync(bundlePath, JSON.stringify({
+      id: 'tenant-isolation-test',
+      kind: 'text',
+      text: { title: 'tenant test', body: 'aislamiento de datos' },
+      locale: 'es',
+    }));
+    const { status } = runCli([
+      'publish',
+      '--tenant', tenantSlug,
+      '--bundle-file', bundlePath,
+      '--platforms', 'x',
+      '--dry-run',
+      '--skip-transcription',
+      '--json',
+    ], { timeout: 15_000 });
+    expect([0, 1]).toContain(status);
+    // The tenant data dir + decisions log must exist after the call.
+    const { existsSync } = require('node:fs');
+    expect(existsSync(tenantDataDir)).toBe(true);
+    expect(existsSync(resolve(tenantDataDir, 'decisions.jsonl'))).toBe(true);
+    // Cleanup
+    const { rmSync } = require('node:fs');
+    rmSync(tenantDataDir, { recursive: true, force: true });
+  });
+});
+
 describe('CLI smoke: dispatch --adapter', () => {
   it('lists candidates from the named adapter (default audiokids)', () => {
     const { stdout, status } = runCli([

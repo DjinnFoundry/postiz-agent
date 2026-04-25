@@ -70,12 +70,19 @@ export class AdapterRegistry {
   }
 }
 
+export interface CreateRegistryOptions {
+  /** Override the AudioKids output directory the default registry's audiokids adapter reads. */
+  audiokidsDir?: string;
+}
+
 /**
  * Default registry: contains every adapter the toolkit ships out of the box.
- * Today only AudioKids; new adapters get added here as they land.
+ * Today only AudioKids; new adapters get added here as they land. Pass
+ * `audiokidsDir` to override the directory the audiokids adapter reads from
+ * (used for multi-tenant setups where each tenant has its own AudioKids output).
  */
-export function createDefaultRegistry(): AdapterRegistry {
-  return new AdapterRegistry().register(new AudioKidsBundleAdapter());
+export function createDefaultRegistry(opts: CreateRegistryOptions = {}): AdapterRegistry {
+  return new AdapterRegistry().register(new AudioKidsBundleAdapter(opts.audiokidsDir));
 }
 
 /**
@@ -85,7 +92,11 @@ export function createDefaultRegistry(): AdapterRegistry {
 class AudioKidsBundleAdapter implements BundleAdapter {
   readonly name = 'audiokids';
   readonly description = 'Reads <slug>.json + <slug>.mp3 stories from AUDIOKIDS_OUTPUT_DIR. Produces audio-story bundles.';
-  private readonly inner = new AudioKidsAdapter();
+  private readonly inner: AudioKidsAdapter;
+
+  constructor(outputDir?: string) {
+    this.inner = outputDir ? new AudioKidsAdapter(outputDir) : new AudioKidsAdapter();
+  }
 
   loadBundle(id: string): ContentBundle {
     return this.inner.loadBundle(id);

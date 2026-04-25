@@ -16,11 +16,13 @@ import { PipelineRunner, PipelineSpecSchema, type PipelineSpec } from './core/pi
 import { createDefaultRegistry } from './tools/index.js';
 import { consoleLogger, silentLogger } from './core/tool.js';
 import { ContentBundleSchema } from './core/content-bundle.js';
+import { loadTenant, listTenants } from './core/tenant.js';
 import { PlatformSchema, type Platform } from './types.js';
 import { runDoctor, formatDoctorReport } from './cli/doctor.js';
 import { runStats, formatStatsReport } from './cli/stats.js';
 import { runStatus, formatStatusReport } from './cli/status.js';
 import { runCtaAb, formatCtaAbReport } from './cli/cta-ab.js';
+import { buildTenantBundle } from './cli/tenant-context.js';
 import {
   listThemes,
   describeTheme,
@@ -72,6 +74,7 @@ See SKILL.md for agent-oriented workflows and decision heuristics.
 program
   .command('publish')
   .description('Build per-platform videos and publish a bundle to each selected target')
+  .option('-t, --tenant <slug>', 'tenant slug (data isolation + per-tenant Postiz/audiokids config)', 'default')
   .option('-s, --slug <slug>', 'bundle id (alias of --id; loaded via --adapter, default audiokids)')
   .option('-i, --id <id>', 'bundle id within the chosen adapter (alias of --slug)')
   .option('-a, --adapter <name>', 'which BundleAdapter to load the id from (default: audiokids)', 'audiokids')
@@ -110,7 +113,8 @@ The decision log at data/decisions.jsonl records every attempt with reason+resul
 
 program.commands[0].action(async (opts) => {
   const platforms = parsePlatforms(opts.platforms);
-  const orch = new Orchestrator();
+  const ctx = buildTenantBundle(opts.tenant);
+  const orch = new Orchestrator({ adapters: ctx.adapters, decisions: ctx.decisions });
   const report = await orch.publish({
     ...resolvePublishSource(opts),
     platforms,
@@ -132,6 +136,7 @@ program.commands[0].action(async (opts) => {
 program
   .command('render')
   .description('Generate MP4 videos for the given platforms without uploading anywhere')
+  .option('-t, --tenant <slug>', 'tenant slug', 'default')
   .option('-s, --slug <slug>', 'bundle id (alias of --id)')
   .option('-i, --id <id>', 'bundle id within the chosen adapter')
   .option('-a, --adapter <name>', 'which BundleAdapter to load the id from (default: audiokids)', 'audiokids')
@@ -146,7 +151,8 @@ running the full publish pipeline. Internally equivalent to 'publish --dry-run'.
 `)
   .action(async (opts) => {
     const platforms = parsePlatforms(opts.platforms);
-    const orch = new Orchestrator();
+    const ctx = buildTenantBundle(opts.tenant);
+    const orch = new Orchestrator({ adapters: ctx.adapters, decisions: ctx.decisions });
     const report = await orch.publish({
       ...resolvePublishSource(opts),
       platforms,
@@ -218,6 +224,7 @@ feed URL once at podcasters.spotify.com/dash/submit. Spotify polls it hourly.
 program
   .command('decisions')
   .description('Query the JSONL decision log (every publish attempt, with reason and outcome)')
+  .option('-t, --tenant <slug>', 'tenant slug', 'default')
   .option('-s, --slug <slug>', 'filter by story slug')
   .option('-p, --platform <platform>', 'filter by platform (x, tiktok, instagram, youtube, spotify)')
   .option('--run-id <uuid>', 'filter by the runId returned by a specific publish() call')
@@ -241,7 +248,8 @@ Examples:
   postiz-agent decisions --reset-attempts dragon-marcos      # unstuck a slug after fixing it
 `)
   .action(async (opts) => {
-    const log = new DecisionLog();
+    const tenant = loadTenant(opts.tenant);
+    const log = new DecisionLog(tenant.paths.decisionsLog);
 
     if (opts.resetAttempts) {
       const slug = validateSlug(opts.resetAttempts);
@@ -456,6 +464,7 @@ a warning; malformed JSONL lines are skipped, remaining lines still process.
 program
   .command('dispatch')
   .description('Autonomously pick the next bundle to publish and run it. Cron-safe.')
+  .option('-t, --tenant <slug>', 'tenant slug', 'default')
   .addOption(
     new Option('-p, --platforms <list>', 'comma-separated target platforms')
       .default('x,tiktok,instagram,youtube'),
@@ -477,25 +486,25 @@ Examples:
 `)
   .action(async (opts) => {
     const platforms = parsePlatforms(opts.platforms);
-    const log = new DecisionLog().list();
-    const registry = createDefaultAdapterRegistry();
-    if (!registry.has(opts.adapter)) {
-      console.error(`unknown adapter "${opts.adapter}". Known: ${registry.names().join(', ')}`);
+    const ctx = buildTenantBundle(opts.tenant);
+    const log = ctx.decisions.list();
+    if (!ctx.adapters.has(opts.adapter)) {
+      console.error(`unknown adapter "${opts.adapter}". Known: ${ctx.adapters.names().join(', ')}`);
       process.exit(1);
     }
-    const adapter = registry.get(opts.adapter);
+    const adapter = ctx.adapters.get(opts.adapter);
     const candidates = adapter.listCandidates().map(c => ({ slug: c.id, generatedAtMs: c.generatedAtMs }));
     const slug = selectNextStory(candidates, log, platforms);
     if (!slug) {
-      const payload = { dispatched: false, reason: 'nothing pending' };
+      const payload = { dispatched: false, reason: 'nothing pending', tenant: opts.tenant };
       if (opts.json) process.stdout.write(JSON.stringify(payload) + '\n');
       else console.log('nothing pending');
       process.exit(0);
     }
-    if (opts.json) process.stdout.write(JSON.stringify({ dispatched: true, slug, adapter: opts.adapter, platforms }) + '\n');
-    else console.log(`dispatching ${slug} (adapter=${opts.adapter}) → ${platforms.join(',')}`);
+    if (opts.json) process.stdout.write(JSON.stringify({ dispatched: true, slug, adapter: opts.adapter, platforms, tenant: opts.tenant }) + '\n');
+    else console.log(`dispatching ${slug} (tenant=${opts.tenant}, adapter=${opts.adapter}) → ${platforms.join(',')}`);
 
-    const orch = new Orchestrator({ adapters: registry });
+    const orch = new Orchestrator({ adapters: ctx.adapters, decisions: ctx.decisions });
     const report = await orch.publish({
       id: slug,
       adapter: opts.adapter,
@@ -506,6 +515,41 @@ Examples:
     if (!opts.json) console.log('\n' + JSON.stringify(report, null, 2));
     if (report.fatalCaptionFailure) process.exit(1);
     process.exit(report.results.every(r => r.success) ? 0 : 1);
+  });
+
+// ─────────────────────────── tenants ───────────────────────────
+const tenants = program
+  .command('tenants')
+  .description('Inspect tenants (per-product config + isolated data)');
+
+tenants
+  .command('list')
+  .description('List configured tenants. The default tenant is always present.')
+  .option('--json', 'emit machine-readable JSON', false)
+  .action((opts: { json?: boolean }) => {
+    const slugs = listTenants();
+    const items = slugs.map(slug => {
+      const t = loadTenant(slug);
+      return {
+        slug: t.slug,
+        dataDir: t.paths.dataDir,
+        postizApiUrl: t.postiz.apiUrl,
+        audiokidsDir: t.audiokids.outputDir,
+        brandName: t.brand?.name,
+      };
+    });
+    if (opts.json) {
+      process.stdout.write(JSON.stringify(items, null, 2) + '\n');
+      return;
+    }
+    if (items.length === 0) {
+      console.log('no tenants configured');
+      return;
+    }
+    for (const i of items) {
+      const brand = i.brandName ? ` [${i.brandName}]` : '';
+      console.log(`  ${i.slug.padEnd(14)}${brand}  data=${i.dataDir}`);
+    }
   });
 
 // ─────────────────────────── adapters ───────────────────────────

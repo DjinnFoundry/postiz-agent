@@ -39,9 +39,9 @@ export class DecisionLog {
   private readonly maxBytes: number;
 
   constructor(logPath?: string, opts?: DecisionLogOptions) {
-    const dir = join(config.paths.projectRoot, 'data');
-    mkdirSync(dir, { recursive: true });
-    this.logPath = logPath ?? join(dir, 'decisions.jsonl');
+    this.logPath = logPath ?? join(config.paths.projectRoot, 'data', 'decisions.jsonl');
+    // Ensure the parent dir exists for any tenant path (data/, data/<slug>/, ...)
+    mkdirSync(dirname(this.logPath), { recursive: true });
     this.maxBytes = opts?.maxBytes ?? config.decisions.logMaxBytes;
   }
 
