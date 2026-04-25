@@ -24,6 +24,8 @@ import { runStatus, formatStatusReport } from './cli/status.js';
 import { runCtaAb, formatCtaAbReport } from './cli/cta-ab.js';
 import { buildTenantBundle } from './cli/tenant-context.js';
 import { brandFromTenant } from './copy/brand.js';
+import { runInit, type Prompter } from './cli/init.js';
+import { createInterface } from 'node:readline/promises';
 import {
   listThemes,
   describeTheme,
@@ -522,6 +524,70 @@ Examples:
     if (!opts.json) console.log('\n' + JSON.stringify(report, null, 2));
     if (report.fatalCaptionFailure) process.exit(1);
     process.exit(report.results.every(r => r.success) ? 0 : 1);
+  });
+
+// ─────────────────────────── init ───────────────────────────
+program
+  .command('init')
+  .description('Onboarding wizard: create a new tenant with its brand identity, Postiz credentials, and data dir')
+  .option('--force', 'overwrite an existing tenant config without prompting', false)
+  .option('--non-interactive', 'fail if any required answer is missing instead of prompting', false)
+  .option('--slug <slug>', 'pre-fill tenant slug')
+  .option('--brand-name <name>', 'pre-fill brand display name')
+  .option('--hashtags <csv>', 'pre-fill comma-separated base hashtags')
+  .option('--postiz-api-url <url>', 'pre-fill Postiz API URL')
+  .option('--postiz-api-key <key>', 'pre-fill Postiz API key')
+  .option('--audiokids-dir <path>', 'pre-fill bundle source directory')
+  .addHelpText('after', `
+Creates tenants/<slug>/config.json (brand identity + Postiz credentials +
+audiokids dir) and data/<slug>/ (isolated decisions / caches / logs).
+
+Examples:
+  postiz-agent init                              # interactive
+  postiz-agent init --slug zetaread --brand-name ZetaRead --hashtags booklovers,reading \\
+    --postiz-api-key sk-xx --audiokids-dir /home/juan/zetaread/output
+`)
+  .action(async (opts: {
+    force?: boolean;
+    nonInteractive?: boolean;
+    slug?: string;
+    brandName?: string;
+    hashtags?: string;
+    postizApiUrl?: string;
+    postizApiKey?: string;
+    audiokidsDir?: string;
+  }) => {
+    const prompter: Prompter = {
+      async ask(question, askOpts) {
+        if (opts.nonInteractive) {
+          if (askOpts?.default !== undefined) return askOpts.default;
+          throw new Error(`init --non-interactive: missing answer for ${askOpts?.key ?? question}`);
+        }
+        const rl = createInterface({ input: process.stdin, output: process.stdout });
+        try {
+          const ans = await rl.question(question);
+          return ans || (askOpts?.default ?? '');
+        } finally {
+          rl.close();
+        }
+      },
+    };
+    const report = await runInit({
+      prompter,
+      force: opts.force,
+      answers: {
+        ...(opts.slug ? { slug: opts.slug } : {}),
+        ...(opts.brandName ? { brandName: opts.brandName } : {}),
+        ...(opts.hashtags != null ? { hashtags: opts.hashtags } : {}),
+        ...(opts.postizApiUrl ? { postizApiUrl: opts.postizApiUrl } : {}),
+        ...(opts.postizApiKey ? { postizApiKey: opts.postizApiKey } : {}),
+        ...(opts.audiokidsDir ? { audiokidsDir: opts.audiokidsDir } : {}),
+      },
+    });
+    if (!report.ok) {
+      console.error(`init failed: ${report.error}`);
+      process.exit(1);
+    }
   });
 
 // ─────────────────────────── tenants ───────────────────────────
