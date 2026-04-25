@@ -18,7 +18,7 @@ export class YoutubePublisher extends VideoPublisher {
     const out = await this.adapter.upload({
       videoPath: mediaPath,
       title,
-      description: buildCaption({ bundle: ctx.bundle, platform: this.platform }),
+      description: buildCaption({ bundle: ctx.bundle, platform: this.platform, ...(ctx.brand ? { brand: ctx.brand } : {}) }),
       privacy: 'unlisted',
       tags: ['audiocuento', 'cuentos infantiles', mood],
     });

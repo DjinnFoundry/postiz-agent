@@ -18,7 +18,7 @@ export abstract class PostizVideoPublisher extends VideoPublisher {
 
   protected async upload(mediaPath: string | null, ctx: PublishContext): Promise<Partial<PublishResult>> {
     const integration = await this.postiz.findIntegration(this.platform);
-    const rich = buildCaptionRich({ bundle: ctx.bundle, platform: this.platform });
+    const rich = buildCaptionRich({ bundle: ctx.bundle, platform: this.platform, ...(ctx.brand ? { brand: ctx.brand } : {}) });
     const posted = await this.postiz.createPost({
       platform: this.platform,
       integrationId: integration.id,

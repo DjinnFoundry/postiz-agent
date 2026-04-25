@@ -1,7 +1,9 @@
+import { createHash } from 'node:crypto';
 import type { ContentBundle, Recipient, RecipientShareConsent } from '../core/content-bundle.js';
 import type { Platform } from '../types.js';
 import { selectCta, type CtaVariant } from './ctas.js';
 import { deriveHashtags, primaryLocale } from './hashtags.js';
+import type { BrandContext } from './brand.js';
 
 /**
  * Builds the social caption for every platform from a ContentBundle. Pure:
@@ -26,7 +28,11 @@ export interface CaptionBuildOptions {
   teaser?: string;
   /** Override the hashtag set. Default derives from mood + content. */
   hashtags?: string[];
+  /** Per-tenant brand identity. Overrides the toolkit defaults for name, hashtags, and CTAs. */
+  brand?: BrandContext;
 }
+
+const DEFAULT_BRAND_NAME = 'AudioKids';
 
 /** Hard caps on the final caption length per platform, with some slack. */
 const LENGTH_CAP: Record<Platform, number> = {
@@ -54,15 +60,16 @@ export function buildCaption(opts: CaptionBuildOptions): string {
  * ctaVariant into the decision log for analytics.
  */
 export function buildCaptionRich(opts: CaptionBuildOptions): CaptionBuildResult {
-  const { bundle, platform } = opts;
+  const { bundle, platform, brand } = opts;
+  const brandName = brand?.name ?? DEFAULT_BRAND_NAME;
   const tagline = taglineForRecipient(bundle.recipient);
-  const hashtags = opts.hashtags ?? deriveHashtags(bundle);
+  const hashtags = opts.hashtags ?? deriveBrandedHashtags(bundle, brand);
   let ctaVariant: CtaVariant | null = null;
   let ctaText: string;
   if (opts.cta != null) {
     ctaText = opts.cta.trim();
   } else {
-    ctaVariant = selectCta(platform, bundle.id, primaryLocale(bundle.locale));
+    ctaVariant = pickBrandedCta(platform, bundle.id, primaryLocale(bundle.locale), brand);
     ctaText = (ctaVariant?.text ?? '').trim();
   }
   const partSuffix = opts.part ? ` · Parte ${opts.part.index} de ${opts.part.total}` : '';
@@ -75,7 +82,7 @@ export function buildCaptionRich(opts: CaptionBuildOptions): CaptionBuildResult 
     case 'instagram': out = buildInstagram({ title, tagline, teaser, cta: ctaText, hashtags, partSuffix }); break;
     case 'tiktok':    out = buildTikTok({ title, tagline, cta: ctaText, hashtags, partSuffix });            break;
     case 'x':         out = buildX({ title, tagline, cta: ctaText, hashtags, partSuffix });                 break;
-    case 'youtube':   out = buildYoutube({ bundle, title, tagline, cta: ctaText, hashtags });               break;
+    case 'youtube':   out = buildYoutube({ bundle, title, tagline, cta: ctaText, hashtags, brandName });    break;
     case 'spotify':   out = '';                                                                             break;
   }
   return {
@@ -84,6 +91,30 @@ export function buildCaptionRich(opts: CaptionBuildOptions): CaptionBuildResult 
     teaser,
     hashtags,
   };
+}
+
+function deriveBrandedHashtags(bundle: ContentBundle, brand: BrandContext | undefined): string[] {
+  if (!brand?.hashtags?.length) return deriveHashtags(bundle);
+  // Replace the locale base with the brand pool, but still append the mood
+  // hashtag the deriveHashtags helper would have added. Mood signal stays
+  // useful for discovery even with a custom brand pool.
+  const mood = bundle.theme?.mood;
+  const base = [...brand.hashtags];
+  if (mood) {
+    const normalised = mood.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '');
+    if (normalised && !base.includes(normalised)) base.push(normalised);
+  }
+  return base;
+}
+
+function pickBrandedCta(platform: Platform, bundleId: string, locale: string, brand: BrandContext | undefined): CtaVariant | null {
+  const overrides = brand?.ctas?.[platform];
+  if (overrides && overrides.length > 0) {
+    const hex = createHash('sha1').update(`${platform}:${locale}:${bundleId}`).digest('hex').slice(0, 8);
+    const idx = parseInt(hex, 16) % overrides.length;
+    return overrides[idx];
+  }
+  return selectCta(platform, bundleId, locale);
 }
 
 /** Convenience: render every platform at once. Useful for CLI preview. */
@@ -142,7 +173,7 @@ function buildX(f: CommonFields): string {
   return withoutCta;
 }
 
-function buildYoutube(f: { bundle: ContentBundle; title: string; tagline: string | null; cta: string; hashtags: string[] }): string {
+function buildYoutube(f: { bundle: ContentBundle; title: string; tagline: string | null; cta: string; hashtags: string[]; brandName: string }): string {
   const title = f.title;
   const teaser = redactName(extractTeaser(f.bundle.text.body, { maxChars: 500 }), f.bundle.recipient);
   const mood = f.bundle.theme?.mood ?? 'cuento';
@@ -158,7 +189,7 @@ function buildYoutube(f: { bundle: ContentBundle; title: string; tagline: string
     '',
     teaser,
     '',
-    `Un audiocuento de AudioKids ${forWhom}.`,
+    `Un audiocuento de ${f.brandName} ${forWhom}.`,
     `Género: ${mood}${durationLine}${vocab}`,
     '',
     f.cta,

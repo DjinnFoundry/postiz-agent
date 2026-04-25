@@ -97,6 +97,7 @@ export class InstagramPublisher extends PostizVideoPublisher {
         bundle: ctx.bundle,
         platform: this.platform,
         part: { index: part.partIndex, total: part.partTotal },
+        ...(ctx.brand ? { brand: ctx.brand } : {}),
       });
       const posted = await this.postiz.createPost({
         platform: this.platform,

@@ -23,6 +23,7 @@ import { runStats, formatStatsReport } from './cli/stats.js';
 import { runStatus, formatStatusReport } from './cli/status.js';
 import { runCtaAb, formatCtaAbReport } from './cli/cta-ab.js';
 import { buildTenantBundle } from './cli/tenant-context.js';
+import { brandFromTenant } from './copy/brand.js';
 import {
   listThemes,
   describeTheme,
@@ -114,6 +115,7 @@ The decision log at data/decisions.jsonl records every attempt with reason+resul
 program.commands[0].action(async (opts) => {
   const platforms = parsePlatforms(opts.platforms);
   const ctx = buildTenantBundle(opts.tenant);
+  const brand = brandFromTenant(ctx.tenant);
   const orch = new Orchestrator({ adapters: ctx.adapters, decisions: ctx.decisions });
   const report = await orch.publish({
     ...resolvePublishSource(opts),
@@ -124,6 +126,7 @@ program.commands[0].action(async (opts) => {
     force: opts.force,
     disableModeration: opts.moderation === false,
     reason: opts.reason,
+    brand,
   });
   if (opts.json) process.stdout.write(JSON.stringify(report) + '\n');
   else console.log('\n' + JSON.stringify(report, null, 2));
@@ -152,6 +155,7 @@ running the full publish pipeline. Internally equivalent to 'publish --dry-run'.
   .action(async (opts) => {
     const platforms = parsePlatforms(opts.platforms);
     const ctx = buildTenantBundle(opts.tenant);
+    const brand = brandFromTenant(ctx.tenant);
     const orch = new Orchestrator({ adapters: ctx.adapters, decisions: ctx.decisions });
     const report = await orch.publish({
       ...resolvePublishSource(opts),
@@ -160,6 +164,7 @@ running the full publish pipeline. Internally equivalent to 'publish --dry-run'.
       skipTranscription: opts.skipTranscription,
       allowNoCaptions: opts.allowNoCaptions,
       reason: 'preview render (no upload)',
+      brand,
     });
     if (opts.json) process.stdout.write(JSON.stringify(report) + '\n');
     else console.log('\n' + JSON.stringify(report, null, 2));
@@ -505,12 +510,14 @@ Examples:
     else console.log(`dispatching ${slug} (tenant=${opts.tenant}, adapter=${opts.adapter}) → ${platforms.join(',')}`);
 
     const orch = new Orchestrator({ adapters: ctx.adapters, decisions: ctx.decisions });
+    const brand = brandFromTenant(ctx.tenant);
     const report = await orch.publish({
       id: slug,
       adapter: opts.adapter,
       platforms,
       dryRun: opts.dryRun,
       reason: opts.reason,
+      brand,
     });
     if (!opts.json) console.log('\n' + JSON.stringify(report, null, 2));
     if (report.fatalCaptionFailure) process.exit(1);
@@ -621,11 +628,12 @@ Examples:
 program.commands.find(c => c.name() === 'copy')!
   .command('preview')
   .description('Print the caption that would be posted for a given bundle + platform')
+  .option('-t, --tenant <slug>', 'tenant slug (brand identity is read from tenants/<slug>/config.json)', 'default')
   .option('--id <id>', 'ContentBundle id (AudioKids slug)')
   .option('--bundle-file <path>', 'path to a bundle JSON')
   .option('-p, --platform <platform>', 'which platform to preview (default: all)')
   .option('--json', 'emit machine-readable JSON', false)
-  .action(async (opts: { id?: string; bundleFile?: string; platform?: string; json?: boolean }) => {
+  .action(async (opts: { tenant?: string; id?: string; bundleFile?: string; platform?: string; json?: boolean }) => {
     if (!opts.id && !opts.bundleFile) {
       console.log([
         'usage: postiz-agent copy preview --id <slug>',
@@ -644,12 +652,14 @@ program.commands.find(c => c.name() === 'copy')!
       process.exit(0);
     }
     const bundle = resolveBundle(opts);
+    const tenantContext = loadTenant(opts.tenant ?? 'default');
+    const brand = brandFromTenant(tenantContext);
     const platforms: Platform[] = opts.platform
       ? [opts.platform as Platform]
       : ['x', 'tiktok', 'instagram', 'youtube'];
     const out: Record<string, unknown> = {};
     for (const p of platforms) {
-      const rich = buildCaptionRich({ bundle, platform: p });
+      const rich = buildCaptionRich({ bundle, platform: p, brand });
       out[p] = {
         caption: rich.caption,
         length: rich.caption.length,

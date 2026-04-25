@@ -16,6 +16,7 @@ import type { ContentBundle } from './core/content-bundle.js';
 import { ContentBundleSchema } from './core/content-bundle.js';
 import { classifyError } from './core/errors.js';
 import { preflightPlatform, type PreflightResult } from './core/preflight.js';
+import type { BrandContext } from './copy/brand.js';
 import { platformOrigin } from './platforms/base.js';
 import type { CaptionStatus, Platform, PublishResult, WordEntry } from './types.js';
 
@@ -36,6 +37,8 @@ export interface PublishOptions {
   force?: boolean;
   disableModeration?: boolean;
   reason?: string;
+  /** Per-tenant brand identity threaded through to the caption builder. */
+  brand?: BrandContext;
 }
 
 export interface PublishReport {
@@ -127,7 +130,14 @@ export class Orchestrator {
     }
 
     const settled = await Promise.allSettled(
-      opts.platforms.map(platform => this.publishPlatform(platform, opts, { bundle, workDir, words, dryRun: opts.dryRun }, captionStatus, baseWarnings, runId)),
+      opts.platforms.map(platform => this.publishPlatform(
+        platform,
+        opts,
+        { bundle, workDir, words, dryRun: opts.dryRun, ...(opts.brand ? { brand: opts.brand } : {}) },
+        captionStatus,
+        baseWarnings,
+        runId,
+      )),
     );
 
     const results: PublishResult[] = settled.map((s, i) => {

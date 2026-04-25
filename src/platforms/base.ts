@@ -2,6 +2,7 @@ import { SlideVideoBuilder } from '../media/slide-video.js';
 import type { ContentBundle } from '../core/content-bundle.js';
 import { classifyError, type ErrorOrigin } from '../core/errors.js';
 import { resolveMediaForPlatform } from '../core/media-strategy.js';
+import type { BrandContext } from '../copy/brand.js';
 import type { Platform, PublishResult, WordEntry } from '../types.js';
 
 export type { WordEntry };
@@ -15,6 +16,8 @@ export interface PublishContext {
    */
   words: WordEntry[];
   dryRun?: boolean;
+  /** Per-tenant brand identity. Overrides AudioKids defaults in the caption builder. */
+  brand?: BrandContext;
 }
 
 export interface PlatformPublisher {
