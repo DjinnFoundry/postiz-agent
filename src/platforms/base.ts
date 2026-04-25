@@ -1,7 +1,7 @@
-import { join } from 'node:path';
 import { SlideVideoBuilder } from '../media/slide-video.js';
 import type { ContentBundle } from '../core/content-bundle.js';
 import { classifyError, type ErrorOrigin } from '../core/errors.js';
+import { resolveMediaForPlatform } from '../core/media-strategy.js';
 import type { Platform, PublishResult, WordEntry } from '../types.js';
 
 export type { WordEntry };
@@ -11,8 +11,7 @@ export interface PublishContext {
   workDir: string;
   /**
    * Word-level transcript, always computed once at the orchestrator level.
-   * If transcription is unavailable (e.g. whisper failed, or --skip-transcription),
-   * the orchestrator must decide whether to abort or surface an empty array here.
+   * Empty for non-audio-story bundles or when transcription is intentionally skipped.
    */
   words: WordEntry[];
   dryRun?: boolean;
@@ -24,9 +23,13 @@ export interface PlatformPublisher {
 }
 
 /**
- * Base class for publishers that need a platform-specific slide video.
- * Handles the common steps: video build via HyperFrames, dry-run short-circuit,
- * error capture. Subclasses implement `upload(videoPath, ctx)`.
+ * Base class for every Postiz / YouTube publisher. Resolves the correct media
+ * for the bundle.kind (slide-render for audio-story, passthrough for video and
+ * image-post, no media for text) and delegates the upload to the subclass.
+ *
+ * The class kept the `VideoPublisher` name for backward compat: subclasses
+ * still implement `upload(mediaPath, ctx)`. `mediaPath` may be null for
+ * text-only kinds; the subclass decides how to treat that.
  */
 export abstract class VideoPublisher implements PlatformPublisher {
   abstract readonly platform: Platform;
@@ -35,18 +38,19 @@ export abstract class VideoPublisher implements PlatformPublisher {
   async publish(ctx: PublishContext): Promise<PublishResult> {
     const ts = new Date().toISOString();
     try {
-      const { videoPath, warnings } = await this.buildVideo(ctx);
+      const { mediaPath, warnings } = await this.resolveMedia(ctx);
       if (ctx.dryRun) {
-        console.log(`  [dry-run] would publish to ${this.platform}: ${videoPath}`);
+        const target = mediaPath ?? '(no media — text-only post)';
+        console.log(`  [dry-run] would publish to ${this.platform}: ${target}`);
         return {
           platform: this.platform,
           success: true,
-          url: `file://${videoPath}`,
+          url: mediaPath ? `file://${mediaPath}` : 'text-only-dry-run',
           timestamp: ts,
           ...(warnings.length ? { warnings } : {}),
         };
       }
-      const result = await this.upload(videoPath, ctx);
+      const result = await this.upload(mediaPath, ctx);
       return {
         platform: this.platform,
         success: true,
@@ -68,25 +72,25 @@ export abstract class VideoPublisher implements PlatformPublisher {
     }
   }
 
-  protected async buildVideo(ctx: PublishContext): Promise<{ videoPath: string; warnings: string[] }> {
-    if (!ctx.words?.length) {
+  protected async resolveMedia(ctx: PublishContext): Promise<{ mediaPath: string | null; warnings: string[] }> {
+    if (ctx.bundle.kind === 'audio-story' && (!ctx.words || ctx.words.length === 0)) {
       throw new Error(
         `cannot build a slide video for ${this.platform} without a transcript. ` +
         `The orchestrator should either transcribe, abort, or pass --skip-transcription ` +
         `(which skips video generation entirely for slide-based publishers).`,
       );
     }
-    const videoPath = join(ctx.workDir, `${ctx.bundle.id}-${this.platform}.mp4`);
-    const result = await this.slides.build({
-      platform: this.platform,
+    const result = await resolveMediaForPlatform({
       bundle: ctx.bundle,
-      outputPath: videoPath,
+      platform: this.platform,
       words: ctx.words,
+      slideBuilder: this.slides,
+      workDir: ctx.workDir,
     });
-    return { videoPath: result.outputPath, warnings: result.warnings };
+    return { mediaPath: result.mediaPath, warnings: result.warnings };
   }
 
-  protected abstract upload(videoPath: string, ctx: PublishContext): Promise<Partial<PublishResult>>;
+  protected abstract upload(mediaPath: string | null, ctx: PublishContext): Promise<Partial<PublishResult>>;
 }
 
 /** Map a target platform to the ErrorOrigin hint our classifier understands. */

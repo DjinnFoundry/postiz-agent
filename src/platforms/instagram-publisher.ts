@@ -33,6 +33,11 @@ export class InstagramPublisher extends PostizVideoPublisher {
 
   override async publish(ctx: PublishContext): Promise<PublishResult> {
     const ts = new Date().toISOString();
+    // Multi-part splitting only applies to audio-story bundles. For video,
+    // image-post, and text the agent is responsible for fitting platform caps;
+    // we just delegate to the base path which handles them via media-strategy.
+    if (ctx.bundle.kind !== 'audio-story') return super.publish(ctx);
+
     const media = ctx.bundle.primaryMedia;
     if (!media) return super.publish(ctx);
     const duration = await this.probeDuration(media);

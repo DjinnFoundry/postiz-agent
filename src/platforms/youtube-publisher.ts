@@ -9,11 +9,14 @@ export class YoutubePublisher extends VideoPublisher {
 
   constructor(private readonly adapter: YoutubeAdapter = new YoutubeAdapter()) { super(); }
 
-  protected async upload(videoPath: string, ctx: PublishContext): Promise<Partial<PublishResult>> {
+  protected async upload(mediaPath: string | null, ctx: PublishContext): Promise<Partial<PublishResult>> {
+    if (!mediaPath) {
+      throw new Error(`youtube requires a video file; bundle kind="${ctx.bundle.kind}" produced no media path`);
+    }
     const title = ctx.bundle.text.title ?? ctx.bundle.id;
     const mood = ctx.bundle.theme?.mood ?? 'cuento';
     const out = await this.adapter.upload({
-      videoPath,
+      videoPath: mediaPath,
       title,
       description: buildCaption({ bundle: ctx.bundle, platform: this.platform }),
       privacy: 'unlisted',

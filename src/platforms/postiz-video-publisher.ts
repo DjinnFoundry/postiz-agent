@@ -5,24 +5,25 @@ import { buildCaptionRich } from '../copy/caption-builder.js';
 import type { PublishResult } from '../types.js';
 
 /**
- * Common base for every publisher that uploads a video through Postiz (X, TikTok, IG).
+ * Common base for every publisher that uploads through Postiz (X, TikTok, IG).
  * Subclasses only declare their `platform`; the caption, find-integration, and
- * upload dance are shared. Subclasses that need platform-specific caption tweaks
- * (e.g. Instagram multi-part) override `upload()` directly.
+ * upload dance are shared. `mediaPath` may be null for text-only bundles
+ * (kind='text'); Postiz accepts text-only posts on every platform that allows
+ * captions without media.
  */
 export abstract class PostizVideoPublisher extends VideoPublisher {
   constructor(protected readonly postiz: PostizClient = new PostizClient()) {
     super();
   }
 
-  protected async upload(videoPath: string, ctx: PublishContext): Promise<Partial<PublishResult>> {
+  protected async upload(mediaPath: string | null, ctx: PublishContext): Promise<Partial<PublishResult>> {
     const integration = await this.postiz.findIntegration(this.platform);
     const rich = buildCaptionRich({ bundle: ctx.bundle, platform: this.platform });
     const posted = await this.postiz.createPost({
       platform: this.platform,
       integrationId: integration.id,
       text: rich.caption,
-      videoPath,
+      ...(mediaPath ? { videoPath: mediaPath } : {}),
     });
     return {
       postId: posted.postId,
