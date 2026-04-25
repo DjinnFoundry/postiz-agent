@@ -26,9 +26,92 @@ describe('CLI smoke: top-level --help', () => {
   it('lists every shipped subcommand', () => {
     const { stdout, status } = runCli(['--help']);
     expect(status).toBe(0);
-    for (const cmd of ['publish', 'render', 'rss', 'decisions', 'status', 'integrations', 'dispatch', 'themes', 'gallery']) {
+    for (const cmd of ['publish', 'render', 'rss', 'decisions', 'status', 'integrations', 'dispatch', 'themes', 'gallery', 'adapters']) {
       expect(stdout).toContain(cmd);
     }
+  });
+});
+
+describe('CLI smoke: adapters list', () => {
+  it('returns at least the audiokids adapter as JSON', () => {
+    const { stdout, status } = runCli(['adapters', 'list', '--json']);
+    expect(status).toBe(0);
+    const list = JSON.parse(stdout);
+    expect(Array.isArray(list)).toBe(true);
+    const audiokids = list.find((a: { name: string }) => a.name === 'audiokids');
+    expect(audiokids).toBeDefined();
+    expect(audiokids).toHaveProperty('description');
+    expect(typeof audiokids.candidateCount).toBe('number');
+  });
+});
+
+describe('CLI smoke: publish accepts --bundle-file (no AudioKids needed)', () => {
+  it('--dry-run with an inline bundle renders without touching any adapter', () => {
+    const bundlePath = resolve(ROOT, 'tmp', 'smoke-inline-bundle.json');
+    mkdirSync(resolve(ROOT, 'tmp'), { recursive: true });
+    const bundle = {
+      id: 'smoke-inline-bundle',
+      kind: 'audio-story',
+      text: { title: 'inline test', body: 'érase una vez' },
+      locale: 'es-ES',
+    };
+    writeFileSync(bundlePath, JSON.stringify(bundle));
+    // We use spotify because preflight short-circuits it as 'skip' kind so we don't
+    // need ffmpeg/whisper/hyperframes for this smoke test. The point is to prove
+    // the inline-bundle path works; spotify exercises the orchestrator without rendering.
+    const { stdout, status } = runCli([
+      'publish',
+      '--bundle-file', bundlePath,
+      '--platforms', 'spotify',
+      '--dry-run',
+      '--skip-transcription',
+      '--json',
+    ], { timeout: 15_000 });
+    expect([0, 1]).toContain(status);
+    // publish prints the orchestrator log lines first; the JSON report is the final line.
+    const lastLine = stdout.trim().split('\n').filter(Boolean).at(-1)!;
+    const report = JSON.parse(lastLine);
+    expect(report.slug).toBe('smoke-inline-bundle');
+    expect(Array.isArray(report.results)).toBe(true);
+  });
+
+  it('rejects when both --slug and --bundle-file are passed', () => {
+    const { status, stderr } = runCli([
+      'publish',
+      '--slug', 'whatever',
+      '--bundle-file', '/tmp/nope.json',
+      '--platforms', 'spotify',
+      '--dry-run',
+    ]);
+    expect(status).not.toBe(0);
+    expect(stderr).toMatch(/either.*bundle.*or.*id|both/i);
+  });
+});
+
+describe('CLI smoke: dispatch --adapter', () => {
+  it('lists candidates from the named adapter (default audiokids)', () => {
+    const { stdout, status } = runCli([
+      'dispatch',
+      '--adapter', 'audiokids',
+      '--platforms', 'tiktok',
+      '--dry-run',
+      '--json',
+    ], { timeout: 10_000 });
+    expect([0, 1]).toContain(status);
+    const first = stdout.trim().split('\n')[0];
+    const parsed = JSON.parse(first);
+    expect(parsed).toHaveProperty('dispatched');
+  });
+
+  it('exits non-zero with a clear error for an unknown adapter', () => {
+    const { status, stderr, stdout } = runCli([
+      'dispatch',
+      '--adapter', 'no-such-adapter',
+      '--platforms', 'tiktok',
+      '--dry-run',
+    ]);
+    expect(status).not.toBe(0);
+    expect(stderr + stdout).toMatch(/unknown adapter|no-such-adapter/);
   });
 });
 

@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { config } from './config.js';
 import { AudioKidsAdapter } from './adapters/audiokids.js';
+import { AdapterRegistry, createDefaultRegistry, type BundleAdapter } from './adapters/registry.js';
 import { SubtitleGenerator } from './media/subtitles.js';
 import { getPublisher as defaultGetPublisher } from './platforms/registry.js';
 import type { PlatformPublisher, PublishContext } from './platforms/base.js';
@@ -12,13 +13,22 @@ import { notifyFailure } from './lib/alerts.js';
 import { wasRecentlyPublished } from './idempotency.js';
 import { moderateWords } from './media/caption-moderation.js';
 import type { ContentBundle } from './core/content-bundle.js';
+import { ContentBundleSchema } from './core/content-bundle.js';
 import { classifyError } from './core/errors.js';
 import { preflightPlatform, type PreflightResult } from './core/preflight.js';
 import { platformOrigin } from './platforms/base.js';
 import type { CaptionStatus, Platform, PublishResult, WordEntry } from './types.js';
 
 export interface PublishOptions {
-  storySlug: string;
+  /** Preferred: id of the bundle within the chosen adapter. Same value as the legacy `storySlug`. */
+  id?: string;
+  /** Legacy alias for `id`. Kept for back-compat with the AudioKids-era CLI flag. */
+  storySlug?: string;
+  /** Which adapter to load the bundle from. Default 'audiokids'. Ignored when `bundle` is supplied. */
+  adapter?: string;
+  /** Inline bundle, bypasses the adapter entirely. Mutually exclusive with id/storySlug. */
+  bundle?: ContentBundle;
+
   platforms: Platform[];
   dryRun?: boolean;
   skipTranscription?: boolean;
@@ -29,6 +39,7 @@ export interface PublishOptions {
 }
 
 export interface PublishReport {
+  /** The bundle id used for this run. */
   slug: string;
   results: PublishResult[];
   /** Set to true when whisper failed and --allow-no-captions was NOT passed (orchestrator aborted). */
@@ -38,6 +49,9 @@ export interface PublishReport {
 }
 
 export interface OrchestratorDeps {
+  /** New: full adapter registry. Use this for multi-tenant / multi-adapter setups. */
+  adapters?: AdapterRegistry;
+  /** Legacy: a single AudioKidsAdapter instance. If provided, wrapped into a registry with name 'audiokids'. */
   adapter?: AudioKidsAdapter;
   decisions?: DecisionLog;
   getPublisher?: (platform: Platform) => PlatformPublisher;
@@ -47,20 +61,25 @@ export interface OrchestratorDeps {
 /**
  * End-to-end pipeline: a ContentBundle → all requested platforms.
  *
- * Today the orchestrator loads bundles via the AudioKids adapter; future pipelines
- * (a custom video pipeline, a data-driven post pipeline, etc.) will inject a different
- * adapter without changing downstream code. Every tool from transcription onward
- * consumes ContentBundle exclusively.
+ * The bundle can come from any registered adapter (default `audiokids`), or be
+ * supplied inline by an external agent that already has a ContentBundle ready.
+ * Every tool from transcription onward consumes ContentBundle exclusively.
  */
 export class Orchestrator {
-  private readonly adapter: AudioKidsAdapter;
+  private readonly adapters: AdapterRegistry;
   private readonly subs = new SubtitleGenerator();
   private readonly decisions: DecisionLog;
   private readonly getPublisher: (platform: Platform) => PlatformPublisher;
   private readonly preflight: (bundle: ContentBundle, platform: Platform) => Promise<PreflightResult>;
 
   constructor(deps: OrchestratorDeps = {}) {
-    this.adapter = deps.adapter ?? new AudioKidsAdapter();
+    if (deps.adapters) {
+      this.adapters = deps.adapters;
+    } else if (deps.adapter) {
+      this.adapters = new AdapterRegistry().register(legacyAudioKidsBundleAdapter(deps.adapter));
+    } else {
+      this.adapters = createDefaultRegistry();
+    }
     this.decisions = deps.decisions ?? new DecisionLog();
     this.getPublisher = deps.getPublisher ?? defaultGetPublisher;
     this.preflight = deps.preflight ?? preflightPlatform;
@@ -68,15 +87,14 @@ export class Orchestrator {
 
   async publish(opts: PublishOptions): Promise<PublishReport> {
     const runId = randomUUID();
-    const bundle = this.adapter.loadBundle(opts.storySlug);
+    const bundle = this.resolveBundle(opts);
     const wordCount = (bundle.sourceMeta?.wordCount as number | undefined) ?? 0;
     const durationMin = (bundle.sourceMeta?.estimatedDurationMin as number | undefined) ?? 0;
     console.log(`\nstory: "${bundle.text.title ?? bundle.id}" (${wordCount} words, ${durationMin}min)`);
 
-    const workDir = join(config.paths.tmpDir, opts.storySlug);
+    const workDir = join(config.paths.tmpDir, bundle.id);
     mkdirSync(workDir, { recursive: true });
 
-    // ─── transcription + moderation ─────────────────────────────────────────
     let words: WordEntry[] = [];
     let captionStatus: CaptionStatus = 'skipped';
     const baseWarnings: string[] = [];
@@ -103,15 +121,11 @@ export class Orchestrator {
         baseWarnings.push(`transcription failed: ${t.error}`);
         if (!opts.allowNoCaptions) {
           console.error(`\n✗ whisper transcription failed and --allow-no-captions was not passed; aborting.`);
-          return { slug: opts.storySlug, results: [], fatalCaptionFailure: true, runId };
+          return { slug: bundle.id, results: [], fatalCaptionFailure: true, runId };
         }
       }
     }
 
-    // ─── parallel publish ───────────────────────────────────────────────────
-    // Platforms are independent: render + upload in parallel. allSettled
-    // guarantees every platform is recorded even if one explodes. The decisions
-    // log uses async atomic appends, safe under concurrent writers.
     const settled = await Promise.allSettled(
       opts.platforms.map(platform => this.publishPlatform(platform, opts, { bundle, workDir, words, dryRun: opts.dryRun }, captionStatus, baseWarnings, runId)),
     );
@@ -123,7 +137,28 @@ export class Orchestrator {
       return { platform, success: false, error, timestamp: new Date().toISOString() };
     });
 
-    return { slug: opts.storySlug, results, runId };
+    return { slug: bundle.id, results, runId };
+  }
+
+  /**
+   * Pick the bundle for this publish call. Priority:
+   *  1. Inline `bundle` (validated against ContentBundleSchema).
+   *  2. `id` / `storySlug` resolved through the named adapter (default 'audiokids').
+   * Throws when neither is present, or both are.
+   */
+  private resolveBundle(opts: PublishOptions): ContentBundle {
+    const id = opts.id ?? opts.storySlug;
+    if (opts.bundle && id) {
+      throw new Error('publish: pass either bundle (inline) or id/storySlug, not both');
+    }
+    if (opts.bundle) {
+      return ContentBundleSchema.parse(opts.bundle);
+    }
+    if (!id) {
+      throw new Error('publish: one of bundle, id, or storySlug is required');
+    }
+    const adapterName = opts.adapter ?? 'audiokids';
+    return this.adapters.get(adapterName).loadBundle(id);
   }
 
   private async publishPlatform(
@@ -136,9 +171,6 @@ export class Orchestrator {
   ): Promise<PublishResult> {
     console.log(`→ ${platform}: starting`);
 
-    // Preflight: refuse early if this platform can't accept this bundle. Saves
-    // 2-3 minutes of render time when the audio is too long, cover is missing,
-    // or the target is spotify (RSS-only).
     const pre = await this.preflight(ctx.bundle, platform);
     if (!pre.ok) {
       const success = pre.kind === 'skip';
@@ -156,7 +188,7 @@ export class Orchestrator {
       };
       await this.decisions.record({
         action: `publish.${platform}.preflight`,
-        storySlug: opts.storySlug,
+        storySlug: ctx.bundle.id,
         platform,
         reason: opts.reason ?? 'scheduled daily publication',
         result,
@@ -166,10 +198,9 @@ export class Orchestrator {
       return result;
     }
 
-    // Idempotency: skip if we already successfully published in the last 24h.
     if (!opts.force && !opts.dryRun) {
-      const history = this.decisions.list({ storySlug: opts.storySlug, platform });
-      const check = wasRecentlyPublished(history, opts.storySlug, platform);
+      const history = this.decisions.list({ storySlug: ctx.bundle.id, platform });
+      const check = wasRecentlyPublished(history, ctx.bundle.id, platform);
       if (check.recent) {
         console.log(`  ${platform} skipped: already published in the last 24h (${check.entry?.createdAt})`);
         const skipped: PublishResult = {
@@ -183,7 +214,7 @@ export class Orchestrator {
         };
         await this.decisions.record({
           action: `publish.${platform}.skipped`,
-          storySlug: opts.storySlug,
+          storySlug: ctx.bundle.id,
           platform,
           reason: opts.reason ?? 'scheduled daily publication',
           result: skipped,
@@ -202,11 +233,10 @@ export class Orchestrator {
     };
 
     if (decorated.parts && decorated.parts.length > 0) {
-      // Multi-part (IG Reels split): log one decision entry per part.
       for (const part of decorated.parts) {
         await this.decisions.record({
           action: `publish.${platform}.part${part.partIndex ?? 0}`,
-          storySlug: opts.storySlug,
+          storySlug: ctx.bundle.id,
           platform,
           reason: opts.reason ?? 'scheduled daily publication',
           result: part,
@@ -216,7 +246,7 @@ export class Orchestrator {
     } else {
       await this.decisions.record({
         action: `publish.${platform}`,
-        storySlug: opts.storySlug,
+        storySlug: ctx.bundle.id,
         platform,
         reason: opts.reason ?? 'scheduled daily publication',
         result: decorated,
@@ -227,13 +257,6 @@ export class Orchestrator {
     return decorated;
   }
 
-  /**
-   * Calls `publisher.publish(ctx)` through the retry helper. Publishers catch their
-   * errors internally and return `{success:false, error}`; we re-throw those into the
-   * retry harness so transient failures (5xx, network errors) get retried. On final
-   * failure we return the last failed PublishResult verbatim so the caller still sees
-   * the original error string.
-   */
   private async publishWithRetry(publisher: PlatformPublisher, ctx: PublishContext): Promise<PublishResult> {
     let lastResult: PublishResult | null = null;
     let attemptsSeen = 0;
@@ -257,7 +280,6 @@ export class Orchestrator {
       });
     } catch (err) {
       const classified = classifyError(err, { origin: platformOrigin(publisher.platform) });
-      // Fire-and-forget alert after retries exhausted.
       void notifyFailure(
         { slug: ctx.bundle.id, platform: publisher.platform, error: classified.message, attempts: attemptsSeen },
         config.alerts?.webhookUrl || undefined,
@@ -298,6 +320,17 @@ export class Orchestrator {
 function mergeWarnings(a?: string[], b?: string[]): string[] | undefined {
   const merged = [...(a ?? []), ...(b ?? [])];
   return merged.length ? merged : undefined;
+}
+
+/** Wrap a legacy AudioKidsAdapter instance into the BundleAdapter interface
+ *  so the registry can hold it under the canonical 'audiokids' name. */
+function legacyAudioKidsBundleAdapter(inner: AudioKidsAdapter): BundleAdapter {
+  return {
+    name: 'audiokids',
+    description: 'AudioKids adapter (injected via deps.adapter)',
+    loadBundle: (id) => inner.loadBundle(id),
+    listCandidates: () => inner.listCandidates().map(c => ({ id: c.slug, generatedAtMs: c.mtimeMs })),
+  };
 }
 
 export type { ContentBundle };
