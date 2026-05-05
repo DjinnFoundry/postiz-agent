@@ -342,8 +342,12 @@ Implementation status of each capability. "Implemented" means the code path exis
 - Path traversal guard on `--bundle-file`
 - Self-hosted Postiz docker-compose
 
+### Roadmap
+
+- **Avatar narration mode** (planned): same cuento, narrated by an AI avatar with lipsync to the existing audio, for TikTok / IG where presence converts better than text. Architecture, tool landscape (HeyGen / Argil / D-ID for lipsync; Flux / Higgsfield are not lipsync tools), and spike plan in [`docs/presentation-modes.md`](./docs/presentation-modes.md).
+
 Intentionally not shipping yet:
-- Additional mood templates — `fantasia` covers all moods via fallback. Authoring the other six is deferred by product decision.
+- Additional mood templates: `fantasia` covers all moods via fallback. Authoring the other six is deferred by product decision.
 - Engagement ingestion from YouTubeCLI + Postiz back into the decision log (future feedback loop).
 - Automated clip selection ("post the best 30s of a 5min cuento"). Stories run at narration pace on purpose — this is a book, not a song.
 - Automatic upload of the Spotify RSS feed + MP3s to R2. `rss` builds `feed.xml`; operator handles the upload.
