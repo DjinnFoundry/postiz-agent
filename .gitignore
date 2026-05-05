@@ -16,6 +16,8 @@ tmp/
 output/
 data/
 .claude/
+# Per-operator tenant state (init wizard writes secrets + machine paths here)
+tenants/
 
 # hyperframes: only keep templates + configs, not generated artifacts
 hyperframes/index.html
