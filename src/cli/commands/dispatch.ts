@@ -4,6 +4,7 @@ import { Orchestrator } from '../../orchestrator.js';
 import { selectNextStory } from '../../dispatch.js';
 import { buildTenantBundle } from '../tenant-context.js';
 import { brandFromTenant } from '../../copy/brand.js';
+import { DEFAULT_ADAPTER } from '../../adapters/registry.js';
 import { parsePlatforms } from '../runner.js';
 import { printJson } from '../io.js';
 
@@ -23,7 +24,7 @@ export function register(program: Command): void {
       new Option('-p, --platforms <list>', 'comma-separated target platforms')
         .default('x,tiktok,instagram,youtube'),
     )
-    .option('-a, --adapter <name>', 'BundleAdapter to walk for candidates (default: audiokids)', 'audiokids')
+    .option('-a, --adapter <name>', `BundleAdapter to walk for candidates (default: ${DEFAULT_ADAPTER})`, DEFAULT_ADAPTER)
     .option('--dry-run', 'resolve the next id and render videos, but do not upload', false)
     .option('--json', 'emit machine-readable JSON on stdout (nothing else)', false)
     .option('--reason <text>', 'reason recorded in the decision log', 'scheduled autonomous dispatch')

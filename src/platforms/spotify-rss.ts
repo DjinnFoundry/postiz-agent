@@ -2,6 +2,7 @@ import { existsSync, statSync } from 'node:fs';
 import { config } from '../config.js';
 import { probeDurationSec } from '../lib/ffprobe.js';
 import { AudioKidsAdapter } from '../adapters/audiokids.js';
+import { firstSentences } from '../lib/sentences.js';
 
 export interface PodcastChannelMeta {
   title: string;
@@ -137,22 +138,9 @@ function parseExcludes(raw: string | undefined): Set<string> {
 export function buildTeaser(contenido: string): string {
   const trimmed = contenido.trim();
   if (!trimmed) return '';
-  const sentences = splitSentences(trimmed).slice(0, 2).join(' ').trim();
+  const sentences = firstSentences(trimmed, { max: 2 });
   if (sentences.length >= 20) return sentences;
   return trimmed.slice(0, 300);
-}
-
-function splitSentences(text: string): string[] {
-  // Capture the punctuation so we don't lose it when joining.
-  const out: string[] = [];
-  const re = /[^.!?…]+[.!?…]+(?=\s|$)/gu;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text))) {
-    out.push(m[0].trim());
-  }
-  // If no terminal punctuation at all, return the whole string as one sentence.
-  if (out.length === 0) out.push(text);
-  return out;
 }
 
 function esc(s: string): string {

@@ -3,6 +3,7 @@ import { Option } from 'commander';
 import { Orchestrator } from '../../orchestrator.js';
 import { buildTenantBundle } from '../tenant-context.js';
 import { brandFromTenant } from '../../copy/brand.js';
+import { DEFAULT_ADAPTER } from '../../adapters/registry.js';
 import { parsePlatforms, resolvePublishSource } from '../runner.js';
 import { printJson } from '../io.js';
 
@@ -19,7 +20,7 @@ export function register(program: Command): void {
     .option('-t, --tenant <slug>', 'tenant slug (data isolation + per-tenant Postiz/audiokids config)', 'default')
     .option('-s, --slug <slug>', 'bundle id (alias of --id; loaded via --adapter, default audiokids)')
     .option('-i, --id <id>', 'bundle id within the chosen adapter (alias of --slug)')
-    .option('-a, --adapter <name>', 'which BundleAdapter to load the id from (default: audiokids)', 'audiokids')
+    .option('-a, --adapter <name>', `which BundleAdapter to load the id from (default: ${DEFAULT_ADAPTER})`, DEFAULT_ADAPTER)
     .option('--bundle-file <path>', 'path to a JSON file with a complete ContentBundle (bypasses any adapter)')
     .addOption(
       new Option('-p, --platforms <list>', 'comma-separated platforms')

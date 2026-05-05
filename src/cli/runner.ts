@@ -3,6 +3,7 @@ import { ContentBundleSchema, type ContentBundle } from '../core/content-bundle.
 import { validateSlug } from '../lib/slug.js';
 import { assertSafeBundlePath } from '../lib/safe-path.js';
 import { AudioKidsAdapter } from '../adapters/audiokids.js';
+import { DEFAULT_ADAPTER } from '../adapters/registry.js';
 import { PlatformSchema, type Platform } from '../types.js';
 import type { StuckSlugInfo } from '../dispatch.js';
 import type { GalleryAspect } from './gallery.js';
@@ -42,7 +43,7 @@ export function resolvePublishSource(opts: { slug?: string; id?: string; adapter
   if (!id) {
     throw new Error('one of --slug/--id or --bundle-file is required');
   }
-  return { id: validateSlug(id), adapter: opts.adapter ?? 'audiokids' };
+  return { id: validateSlug(id), adapter: opts.adapter ?? DEFAULT_ADAPTER };
 }
 
 /**

@@ -3,6 +3,7 @@ import type { ContentBundle, Recipient, RecipientShareConsent } from '../core/co
 import type { Platform } from '../types.js';
 import { selectCta, type CtaVariant } from './ctas.js';
 import { deriveHashtags, primaryLocale } from './hashtags.js';
+import { firstSentences } from '../lib/sentences.js';
 import type { BrandContext } from './brand.js';
 
 /**
@@ -258,19 +259,9 @@ export function taglineForRecipient(recipient?: Recipient): string | null {
 export function extractTeaser(body: string, opts: { maxChars?: number } = {}): string {
   const cap = opts.maxChars ?? 180;
   if (!body) return '';
-  // Pick up to 2 sentences.
-  const sentences: string[] = [];
-  const re = /[^.!?…]+[.!?…]+/g;
-  let match: RegExpExecArray | null;
-  let total = 0;
-  while ((match = re.exec(body)) !== null && sentences.length < 2) {
-    const s = match[0].trim();
-    if (total + s.length > cap) break;
-    sentences.push(s);
-    total += s.length + 1;
-  }
-  if (sentences.length) return sentences.join(' ');
-  // No sentence terminators; hard-cut on word boundary.
+  const sentences = firstSentences(body, { max: 2, maxChars: cap });
+  if (sentences) return sentences;
+  // No sentence terminators OR every candidate already exceeds the cap; hard-cut on word boundary.
   const trimmed = body.trim();
   if (trimmed.length <= cap) return trimmed;
   const clipped = trimmed.slice(0, cap);

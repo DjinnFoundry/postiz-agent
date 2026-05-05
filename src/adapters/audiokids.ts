@@ -3,6 +3,7 @@ import { join, dirname } from 'node:path';
 import { config } from '../config.js';
 import { StorySchema, StorySchemaV2, type Story, type StoryV2 } from '../types.js';
 import type { ContentBundle, Recipient } from '../core/content-bundle.js';
+import { countSentences } from '../lib/sentences.js';
 import { generateCoverSvg } from './cover-placeholder.js';
 
 /**
@@ -36,11 +37,24 @@ export interface AudioKidsAdapterOptions {
   generatePlaceholder?: boolean;
   /** Defaults to `<projectRoot>/data/covers`. Overridable for tests. */
   placeholderDir?: string;
+  /**
+   * Side channel for non-fatal walk failures (unreadable dir entry, malformed
+   * story.json, missing audio in a partially-rendered story, etc.). Default
+   * routes to stderr behind `DEBUG_ADAPTER=1` so production stays quiet but
+   * operators can opt in when a candidate mysteriously disappears. Tests pass
+   * an assertion callback to verify the failure surfaced.
+   */
+  onWarn?: (message: string) => void;
 }
+
+const DEFAULT_ON_WARN: (message: string) => void = process.env.DEBUG_ADAPTER === '1'
+  ? (m: string) => console.warn(`[audiokids-adapter] ${m}`)
+  : () => {};
 
 export class AudioKidsAdapter {
   private readonly generatePlaceholder: boolean;
   private readonly placeholderDir: string;
+  private readonly onWarn: (message: string) => void;
 
   constructor(
     private readonly outputDir: string = config.audiokids.outputDir,
@@ -48,6 +62,7 @@ export class AudioKidsAdapter {
   ) {
     this.generatePlaceholder = options.generatePlaceholder ?? false;
     this.placeholderDir = options.placeholderDir ?? join(config.paths.projectRoot, 'data', 'covers');
+    this.onWarn = options.onWarn ?? DEFAULT_ON_WARN;
   }
 
   loadBundle(slug: string): ContentBundle {
@@ -76,7 +91,8 @@ export class AudioKidsAdapter {
     let entries: string[];
     try {
       entries = readdirSync(this.outputDir);
-    } catch {
+    } catch (err) {
+      this.onWarn(`readdirSync(${this.outputDir}) failed: ${describe(err)}`);
       return [];
     }
 
@@ -86,7 +102,8 @@ export class AudioKidsAdapter {
       let st;
       try {
         st = statSync(fullPath);
-      } catch {
+      } catch (err) {
+        this.onWarn(`statSync(${fullPath}) failed: ${describe(err)}`);
         continue;
       }
 
@@ -189,7 +206,8 @@ export class AudioKidsAdapter {
     let entries: string[];
     try {
       entries = readdirSync(dir);
-    } catch {
+    } catch (err) {
+      this.onWarn(`v2 audio readdir(${dir}) failed: ${describe(err)}`);
       return undefined;
     }
     const mp3s = entries.filter(f => f.endsWith('.mp3'));
@@ -263,8 +281,9 @@ export class AudioKidsAdapter {
       const raw = JSON.parse(readFileSync(jsonPath, 'utf-8'));
       const parsed = StorySchema.safeParse(raw);
       if (parsed.success) generatedAt = parsed.data.meta.generatedAt;
-    } catch {
-      /* skip invalid candidate */
+      else this.onWarn(`v1 candidate ${slug}: schema mismatch on ${jsonPath}: ${parsed.error.message}`);
+    } catch (err) {
+      this.onWarn(`v1 candidate ${slug}: parse failed for ${jsonPath}: ${describe(err)}`);
     }
     return { slug, mtimeMs: st.mtimeMs, ...(generatedAt ? { generatedAt } : {}) };
   }
@@ -347,9 +366,15 @@ function countWords(text: string): number {
   return text.split(/\s+/).filter(Boolean).length;
 }
 
-function countSentences(text: string): number {
-  const matches = text.match(/[^.!?]+[.!?]+/g);
-  return matches ? matches.length : (text.trim() ? 1 : 0);
+/** Compact description of any thrown value for diagnostic logs. Errors get
+ *  their `code` prefix when present (ENOENT, EACCES, etc.) so the operator
+ *  can spot a permissions issue from one line of output. */
+function describe(err: unknown): string {
+  if (err instanceof Error) {
+    const code = (err as Error & { code?: string }).code;
+    return code ? `${code}: ${err.message}` : err.message;
+  }
+  return String(err);
 }
 
 /** Approximate narrator pace at ~160 wpm. Used only when the v2 job omits targetDurationMin. */

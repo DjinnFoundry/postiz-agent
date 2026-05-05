@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { config } from './config.js';
 import { AudioKidsAdapter } from './adapters/audiokids.js';
-import { AdapterRegistry, createDefaultRegistry, type BundleAdapter } from './adapters/registry.js';
+import { AdapterRegistry, createDefaultRegistry, DEFAULT_ADAPTER, type BundleAdapter } from './adapters/registry.js';
 import { SubtitleGenerator } from './media/subtitles.js';
 import { getPublisher as defaultGetPublisher } from './platforms/registry.js';
 import type { PlatformPublisher, PublishContext } from './platforms/base.js';
@@ -167,7 +167,7 @@ export class Orchestrator {
     if (!id) {
       throw new Error('publish: one of bundle, id, or storySlug is required');
     }
-    const adapterName = opts.adapter ?? 'audiokids';
+    const adapterName = opts.adapter ?? DEFAULT_ADAPTER;
     return this.adapters.get(adapterName).loadBundle(id);
   }
 
@@ -362,7 +362,7 @@ function mergeWarnings(a?: string[], b?: string[]): string[] | undefined {
  *  so the registry can hold it under the canonical 'audiokids' name. */
 function legacyAudioKidsBundleAdapter(inner: AudioKidsAdapter): BundleAdapter {
   return {
-    name: 'audiokids',
+    name: DEFAULT_ADAPTER,
     description: 'AudioKids adapter (injected via deps.adapter)',
     loadBundle: (id) => inner.loadBundle(id),
     listCandidates: () => inner.listCandidates().map(c => ({ id: c.slug, generatedAtMs: c.mtimeMs })),

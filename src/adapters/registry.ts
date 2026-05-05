@@ -2,6 +2,14 @@ import { AudioKidsAdapter } from './audiokids.js';
 import type { ContentBundle } from '../core/content-bundle.js';
 
 /**
+ * Canonical name of the bundled AudioKids adapter. Used as the default in CLI
+ * flags (`--adapter`) and as the lookup key in `Orchestrator.publish` when no
+ * adapter is specified. Centralised here so renaming, deprecating, or pointing
+ * the default elsewhere is one edit.
+ */
+export const DEFAULT_ADAPTER = 'audiokids' as const;
+
+/**
  * A BundleAdapter is the seam between a content-producing pipeline (AudioKids,
  * a podcast trimmer, a meme generator, a developer-content scraper, etc.) and
  * the publication toolkit. Each adapter knows how to walk its own source of
@@ -62,7 +70,14 @@ export class AdapterRegistry {
       let count = 0;
       try {
         count = a.listCandidates().length;
-      } catch {
+      } catch (err) {
+        // Don't blow up `adapters list` (the only caller) just because one
+        // adapter's source dir is unreachable. Surface the failure on stderr
+        // when DEBUG_ADAPTER=1 so operators can still spot it.
+        if (process.env.DEBUG_ADAPTER === '1') {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn(`[adapter-registry] ${name}.listCandidates failed: ${msg}`);
+        }
         count = 0;
       }
       return { name: a.name, description: a.description, candidateCount: count };
@@ -90,7 +105,7 @@ export function createDefaultRegistry(opts: CreateRegistryOptions = {}): Adapter
  * focused on AudioKids parsing details and isolates the registry contract here.
  */
 class AudioKidsBundleAdapter implements BundleAdapter {
-  readonly name = 'audiokids';
+  readonly name = DEFAULT_ADAPTER;
   readonly description = 'Reads AudioKids stories from AUDIOKIDS_OUTPUT_DIR. Supports both layouts: v1 flat (<slug>.json + <slug>.mp3) and v2 subdir (<slug>/story.json + <slug>/<slug>.mp3). Produces audio-story bundles.';
   private readonly inner: AudioKidsAdapter;
 

@@ -1,6 +1,7 @@
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { config } from '../config.js';
+import { readJsonOr } from '../lib/json-file.js';
 import {
   ThemeCatalogSchema,
   type Palette,
@@ -81,13 +82,7 @@ export class ThemeDecisionStore {
   constructor(private readonly path: string = DECISIONS_PATH) {}
 
   get(bundleId: string): ThemeDecision | undefined {
-    if (!existsSync(this.path)) return undefined;
-    try {
-      const file = JSON.parse(readFileSync(this.path, 'utf-8')) as { decisions?: Record<string, ThemeDecision> };
-      return file.decisions?.[bundleId];
-    } catch {
-      return undefined;
-    }
+    return this.readAll()[bundleId];
   }
 
   set(decision: ThemeDecision, opts: { catalogVersion?: string } = {}): void {
@@ -146,13 +141,9 @@ export class ThemeDecisionStore {
   }
 
   private readAll(): Record<string, ThemeDecision> {
-    if (!existsSync(this.path)) return {};
-    try {
-      const raw = JSON.parse(readFileSync(this.path, 'utf-8')) as { decisions?: Record<string, ThemeDecision> };
-      return raw.decisions ?? {};
-    } catch {
-      return {};
-    }
+    return readJsonOr<Record<string, ThemeDecision>>(this.path, {}, {
+      validate: (raw) => (raw as { decisions?: Record<string, ThemeDecision> } | null)?.decisions ?? undefined,
+    });
   }
 
   private writeAll(decisions: Record<string, ThemeDecision>): void {

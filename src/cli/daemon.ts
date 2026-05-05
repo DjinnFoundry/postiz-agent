@@ -84,10 +84,11 @@ async function defaultExecutor(tenant: string, platforms: Platform[]): Promise<D
   const { selectNextStory } = await import('../dispatch.js');
   const { Orchestrator } = await import('../orchestrator.js');
   const { brandFromTenant } = await import('../copy/brand.js');
+  const { DEFAULT_ADAPTER } = await import('../adapters/registry.js');
 
   const ctx = buildTenantBundle(tenant);
   const log = ctx.decisions.list();
-  const adapter = ctx.adapters.get('audiokids');
+  const adapter = ctx.adapters.get(DEFAULT_ADAPTER);
   const candidates = adapter.listCandidates().map(c => ({ slug: c.id, generatedAtMs: c.generatedAtMs }));
   const slug = selectNextStory(candidates, log, platforms);
   if (!slug) {
@@ -96,7 +97,7 @@ async function defaultExecutor(tenant: string, platforms: Platform[]): Promise<D
   const orch = new Orchestrator({ adapters: ctx.adapters, decisions: ctx.decisions });
   await orch.publish({
     id: slug,
-    adapter: 'audiokids',
+    adapter: DEFAULT_ADAPTER,
     platforms,
     reason: 'daemon heartbeat dispatch',
     brand: brandFromTenant(ctx.tenant),

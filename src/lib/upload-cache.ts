@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
-import { createReadStream, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createReadStream, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { config } from '../config.js';
+import { readJsonOr } from './json-file.js';
 
 /**
  * Dedup cache for Postiz media uploads. Keyed by SHA256 of the file content so
@@ -111,15 +112,14 @@ export class UploadCache {
   }
 
   private readFile(): CacheFile {
-    if (!existsSync(this.cachePath)) return { version: 1, entries: {} };
-    try {
-      const parsed = JSON.parse(readFileSync(this.cachePath, 'utf-8')) as CacheFile;
-      if (parsed.version !== 1) return { version: 1, entries: {} };
-      if (!parsed.entries || typeof parsed.entries !== 'object') return { version: 1, entries: {} };
-      return parsed;
-    } catch {
-      return { version: 1, entries: {} };
-    }
+    return readJsonOr<CacheFile>(this.cachePath, { version: 1, entries: {} }, {
+      validate: (raw) => {
+        const parsed = raw as Partial<CacheFile> | null;
+        if (!parsed || parsed.version !== 1) return undefined;
+        if (!parsed.entries || typeof parsed.entries !== 'object') return undefined;
+        return parsed as CacheFile;
+      },
+    });
   }
 
   private writeFile(data: CacheFile): void {

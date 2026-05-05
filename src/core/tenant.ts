@@ -1,6 +1,7 @@
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { config } from '../config.js';
+import { readJsonOr } from '../lib/json-file.js';
 
 /**
  * Multi-tenant config + paths.
@@ -121,12 +122,7 @@ interface TenantOverrides {
 
 function readTenantConfig(root: string, slug: string): TenantOverrides | null {
   const path = resolve(root, 'tenants', slug, 'config.json');
-  if (!existsSync(path)) return null;
-  try {
-    const raw = JSON.parse(readFileSync(path, 'utf-8'));
-    if (raw && typeof raw === 'object') return raw as TenantOverrides;
-    return null;
-  } catch {
-    return null;
-  }
+  return readJsonOr<TenantOverrides | null>(path, null, {
+    validate: (raw) => (raw && typeof raw === 'object' ? raw as TenantOverrides : undefined),
+  });
 }

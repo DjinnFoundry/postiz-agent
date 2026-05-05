@@ -2,6 +2,7 @@ import type { Command } from 'commander';
 import { Orchestrator } from '../../orchestrator.js';
 import { buildTenantBundle } from '../tenant-context.js';
 import { brandFromTenant } from '../../copy/brand.js';
+import { DEFAULT_ADAPTER } from '../../adapters/registry.js';
 import { parsePlatforms, resolvePublishSource } from '../runner.js';
 import { printJson } from '../io.js';
 
@@ -16,7 +17,7 @@ export function register(program: Command): void {
     .option('-t, --tenant <slug>', 'tenant slug', 'default')
     .option('-s, --slug <slug>', 'bundle id (alias of --id)')
     .option('-i, --id <id>', 'bundle id within the chosen adapter')
-    .option('-a, --adapter <name>', 'which BundleAdapter to load the id from (default: audiokids)', 'audiokids')
+    .option('-a, --adapter <name>', `which BundleAdapter to load the id from (default: ${DEFAULT_ADAPTER})`, DEFAULT_ADAPTER)
     .option('--bundle-file <path>', 'path to a JSON file with a complete ContentBundle (bypasses any adapter)')
     .option('-p, --platforms <list>', 'comma-separated platforms', 'tiktok,instagram,youtube,x')
     .option('--skip-transcription', 'skip whisper (no captions)', false)
