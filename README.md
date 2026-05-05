@@ -312,7 +312,16 @@ For 1 story/day across all 5 platforms:
 
 ## Status
 
-Shipping (751 unit + integration tests):
+### Verified end-to-end
+
+- (no row yet)
+
+When the first real publish lands on a public URL (X / TikTok / Instagram / YouTube), it gets recorded here as `<platform> · <date> · <post URL>`. Until then, the rest of "Shipping" below describes implemented capability, not production-validated behaviour. Render to MP4, RSS feed generation, and the full decision log are exercised every day via tests; the upload-to-real-platform leg requires Postiz OAuth completion (see `deploy/README.md`) and has not yet been recorded.
+
+### Shipping (829 unit + integration tests)
+
+Implementation status of each capability. "Implemented" means the code path exists and tests cover it; the Verified end-to-end table above is the source of truth for "the feature has produced a real artefact in production".
+
 - End-to-end publish pipeline with error taxonomy and remediation hints
 - `dispatch` with stuck-slug detection + 1h/4h/16h transient backoff ladder
 - Preflight: duration cap, bitrate (≥64 kbps), cover existence, platform capability

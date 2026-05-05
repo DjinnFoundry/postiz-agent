@@ -69,6 +69,7 @@ The orchestrator also guards against whisper failures: if transcription crashes,
 | `publish --slug X --platforms ...` | Full pipeline: render + upload | 0 all succeeded, 1 any failed |
 | `rss --output feed.xml` | Rebuild Spotify podcast feed | always 0 unless write fails |
 | `decisions --slug X --platform P` | Query publish history | always 0 |
+| `inbox list` / `inbox reply` | **alpha (mock provider only)**: list incoming replies and post a response. The registry today wires every platform to `MockInboxProvider` (synthetic fixture data); X / IG / YouTube / TikTok real APIs are not implemented. Treat the output as scaffolding for the agent flow, not as live engagement. | 0 ok, 1 on reply error |
 
 Every command accepts `--help` with examples. Commands that emit JSON also accept `--json` for agent-friendly output (one line, no ANSI).
 
