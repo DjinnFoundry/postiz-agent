@@ -1,8 +1,6 @@
 import { existsSync } from 'node:fs';
 import { config } from '../config.js';
 import { run } from '../lib/process.js';
-import type { ContentBundle } from '../core/content-bundle.js';
-import { resolveTagline, getEstimatedDurationMin, getVocabularioNuevo } from '../core/content-bundle.js';
 
 export interface YoutubeUploadInput {
   videoPath: string;
@@ -20,7 +18,10 @@ export interface YoutubeUploadResult {
 }
 
 /**
- * Delegates YouTube publishing to YouTubeCLI (the user's existing superior tool).
+ * Delegates YouTube publishing to a `mix run youtube_cli video upload` CLI
+ * (the operator's existing tool). YouTube descriptions are built upstream by
+ * `buildCaption({ platform: 'youtube', brand })` in caption-builder.ts so the
+ * brand identity threads through; this adapter is only the shell-out layer.
  */
 export class YoutubeAdapter {
   constructor(private readonly projectPath: string = config.youtubecli.path) {}
@@ -44,21 +45,5 @@ export class YoutubeAdapter {
     const match = stdout.match(/videoId[:=\s]+([A-Za-z0-9_-]{11})/);
     if (!match) throw new Error(`Could not parse videoId from YouTubeCLI output: ${stdout.slice(-300)}`);
     return { videoId: match[1], url: `https://www.youtube.com/watch?v=${match[1]}` };
-  }
-
-  buildDescription(bundle: ContentBundle): string {
-    const mood = bundle.theme?.mood ?? 'cuento';
-    const tagline = resolveTagline(bundle);
-    const forWhom = tagline ? `para ${tagline}` : 'hecho a medida';
-    const durationMin = getEstimatedDurationMin(bundle);
-    const vocabList = getVocabularioNuevo(bundle);
-    const vocab = vocabList?.length ? `\n\nVocabulario nuevo: ${vocabList.join(', ')}` : '';
-    const durationLine = durationMin != null ? ` · Duración: ~${durationMin} min` : '';
-    return (
-      `${bundle.text.body.slice(0, 300).trim()}...\n\n` +
-      `Un audiocuento de AudioKids ${forWhom}.\n` +
-      `Género: ${mood}${durationLine}${vocab}\n\n` +
-      `#audiocuentos #cuentosinfantiles #${mood}`
-    );
   }
 }
