@@ -122,23 +122,16 @@ async function preflightVideo(
     };
   }
   const variant = VARIANTS[platform]!;
-  try {
-    const duration = await probe(bundle.primaryMedia);
-    if (duration > variant.maxDurationSec) {
-      return {
-        ok: false,
-        reason: `video duration ${Math.round(duration)}s exceeds ${platform} limit ${variant.maxDurationSec}s`,
-        kind: 'permanent',
-        hint: `trim the video before publishing or drop ${platform} from --platforms`,
-      };
-    }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+  const probed = await tryProbe('video duration', () => probe(bundle.primaryMedia!), {
+    hint: 'verify ffprobe is installed and the video file is valid',
+  });
+  if (!probed.ok) return probed.result;
+  if (probed.value > variant.maxDurationSec) {
     return {
       ok: false,
-      reason: `could not probe video duration: ${msg}`,
-      kind: 'needs-config',
-      hint: 'verify ffprobe is installed and the video file is valid',
+      reason: `video duration ${Math.round(probed.value)}s exceeds ${platform} limit ${variant.maxDurationSec}s`,
+      kind: 'permanent',
+      hint: `trim the video before publishing or drop ${platform} from --platforms`,
     };
   }
   return { ok: true };
@@ -175,47 +168,62 @@ async function preflightAudioStory(
     };
   }
 
-  try {
-    const kbps = await probeBitrate(bundle.primaryMedia);
-    if (kbps < minBitrateKbps) {
-      return {
-        ok: false,
-        reason: `audio bitrate ${kbps} kbps is below minimum ${minBitrateKbps} kbps`,
-        kind: 'permanent',
-        hint: 'regenerate MP3 at higher quality (at least 64 kbps, 128+ recommended)',
-      };
-    }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+  const bitrateProbed = await tryProbe('audio bitrate', () => probeBitrate(bundle.primaryMedia!), {
+    hint: 'verify ffprobe is installed and the audio file is a valid MP3',
+  });
+  if (!bitrateProbed.ok) return bitrateProbed.result;
+  if (bitrateProbed.value < minBitrateKbps) {
     return {
       ok: false,
-      reason: `could not probe audio bitrate: ${msg}`,
-      kind: 'needs-config',
-      hint: 'verify ffprobe is installed and the audio file is a valid MP3',
+      reason: `audio bitrate ${bitrateProbed.value} kbps is below minimum ${minBitrateKbps} kbps`,
+      kind: 'permanent',
+      hint: 'regenerate MP3 at higher quality (at least 64 kbps, 128+ recommended)',
     };
   }
 
-  try {
-    const duration = await probe(bundle.primaryMedia);
-    if (duration > maxDurationSec && !SPLITTABLE_PLATFORMS.has(platform)) {
-      return {
-        ok: false,
-        reason: `audio duration ${Math.round(duration)}s exceeds ${platform} limit ${maxDurationSec}s`,
-        kind: 'permanent',
-        hint: platform === 'x'
-          ? 'X Premium is required for >10min videos; drop x from --platforms or upgrade tier'
-          : `shorten the source audio or drop ${platform} from --platforms`,
-      };
-    }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+  const durationProbed = await tryProbe('audio duration', () => probe(bundle.primaryMedia!), {
+    hint: 'verify ffprobe is installed and the audio file is a valid MP3',
+  });
+  if (!durationProbed.ok) return durationProbed.result;
+  if (durationProbed.value > maxDurationSec && !SPLITTABLE_PLATFORMS.has(platform)) {
     return {
       ok: false,
-      reason: `could not probe audio duration: ${msg}`,
-      kind: 'needs-config',
-      hint: 'verify ffprobe is installed and the audio file is a valid MP3',
+      reason: `audio duration ${Math.round(durationProbed.value)}s exceeds ${platform} limit ${maxDurationSec}s`,
+      kind: 'permanent',
+      hint: platform === 'x'
+        ? 'X Premium is required for >10min videos; drop x from --platforms or upgrade tier'
+        : `shorten the source audio or drop ${platform} from --platforms`,
     };
   }
 
   return { ok: true };
+}
+
+/**
+ * Run a probe (ffprobe duration, bitrate, …) and turn any thrown error into a
+ * canonical PreflightResult skip. The four nested try/catch blocks across
+ * preflightVideo + preflightAudioStory all built the same `{ok: false, kind:
+ * 'needs-config', reason: 'could not probe X: <msg>', hint: 'verify ffprobe…'}`
+ * envelope. This helper makes that envelope uniform and keeps each preflight
+ * function reading top-down (probe-then-validate) instead of try-then-mutate.
+ */
+async function tryProbe<T>(
+  label: string,
+  fn: () => Promise<T>,
+  opts: { hint?: string } = {},
+): Promise<{ ok: true; value: T } | { ok: false; result: PreflightResult }> {
+  try {
+    return { ok: true, value: await fn() };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      result: {
+        ok: false,
+        reason: `could not probe ${label}: ${msg}`,
+        kind: 'needs-config',
+        ...(opts.hint ? { hint: opts.hint } : {}),
+      },
+    };
+  }
 }

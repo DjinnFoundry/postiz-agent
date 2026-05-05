@@ -3,7 +3,7 @@ import { findStuckSlugs } from '../dispatch.js';
 import { DecisionLog } from '../decisions/log.js';
 import { UploadCache } from '../lib/upload-cache.js';
 import { ThemeDecisionStore } from '../theme/catalog.js';
-import { PostizClient, type PostizIntegration } from '../platforms/postiz.js';
+import { PostizClient, probePostizIntegrations, type PostizIntegration } from '../platforms/postiz.js';
 import { AudioKidsAdapter } from '../adapters/audiokids.js';
 import { config } from '../config.js';
 import type { DecisionLogEntry, Platform } from '../types.js';
@@ -84,42 +84,38 @@ async function buildPostizSection(
   apiKey: string,
   listIntegrations: () => Promise<PostizIntegration[]>,
 ): Promise<DoctorItem[]> {
-  if (!apiKey) {
+  const probe = await probePostizIntegrations(apiKey, listIntegrations);
+  if (probe.kind === 'no-api-key') {
     return [{
       label: 'postiz integrations',
       status: 'needs-config',
       hint: 'POSTIZ_API_KEY missing; set it in .env so the agent can reach Postiz',
     }];
   }
-  let integrations: PostizIntegration[] = [];
-  try {
-    integrations = await listIntegrations();
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+  if (probe.kind === 'unreachable') {
     return [{
       label: 'postiz integrations',
       status: 'needs-config',
-      hint: `could not query Postiz: ${msg}`,
+      hint: `could not query Postiz: ${probe.message}`,
     }];
   }
-  const reconnectUrl = config.postiz.apiUrl.replace(/\/public\/v1$/, '');
   const items: DoctorItem[] = [];
   for (const platform of POSTIZ_TARGET_PLATFORMS) {
-    const match = integrations.find(i => i.providerIdentifier === platform);
-    if (!match) {
+    const status = probe.perPlatform[platform];
+    if (!status || status.state === 'missing') {
       items.push({
         label: `${platform} integration`,
         status: 'needs-config',
-        hint: `not connected; connect at ${reconnectUrl}`,
+        hint: `not connected; connect at ${probe.reconnectUrl}`,
       });
-    } else if (match.disabled) {
+    } else if (status.state === 'disabled') {
       items.push({
         label: `${platform} integration`,
         status: 'needs-config',
-        hint: `${match.name} disabled; reconnect at ${reconnectUrl}`,
+        hint: `${status.name} disabled; reconnect at ${probe.reconnectUrl}`,
       });
     } else {
-      items.push({ label: `${platform} integration (${match.name})`, status: 'ok' });
+      items.push({ label: `${platform} integration (${status.name})`, status: 'ok' });
     }
   }
   return items;

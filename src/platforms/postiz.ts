@@ -39,6 +39,55 @@ export interface PostizIntegration {
   disabled: boolean;
 }
 
+/**
+ * Per-platform connection status as observed by `probePostizIntegrations`.
+ * doctor + status both render this into their own envelope (DoctorItem
+ * vs StatusCheck) so the probe keeps the shape neutral.
+ */
+export type IntegrationStatus =
+  | { state: 'connected'; name: string; id: string }
+  | { state: 'disabled'; name: string; id: string }
+  | { state: 'missing' };
+
+export type PostizIntegrationsProbe =
+  | { kind: 'no-api-key' }
+  | { kind: 'unreachable'; message: string }
+  | { kind: 'ok'; perPlatform: Partial<Record<Platform, IntegrationStatus>>; reconnectUrl: string };
+
+const POSTIZ_TARGET_PLATFORMS: Array<'x' | 'tiktok' | 'instagram' | 'youtube'> = [
+  'x', 'tiktok', 'instagram', 'youtube',
+];
+
+/**
+ * Run the same integrations probe doctor and status used to repeat verbatim:
+ * if no api key → 'no-api-key'; if listIntegrations throws → 'unreachable';
+ * otherwise classify each target platform as connected / disabled / missing.
+ * The returned shape is neutral so callers map it into whatever check format
+ * they expose (DoctorItem with hint vs StatusCheck with detail+warning).
+ */
+export async function probePostizIntegrations(
+  apiKey: string,
+  listIntegrations: () => Promise<PostizIntegration[]>,
+  apiUrl: string = config.postiz.apiUrl,
+): Promise<PostizIntegrationsProbe> {
+  if (!apiKey) return { kind: 'no-api-key' };
+  let integrations: PostizIntegration[];
+  try {
+    integrations = await listIntegrations();
+  } catch (err) {
+    return { kind: 'unreachable', message: err instanceof Error ? err.message : String(err) };
+  }
+  const reconnectUrl = apiUrl.replace(/\/public\/v1$/, '');
+  const perPlatform: Partial<Record<Platform, IntegrationStatus>> = {};
+  for (const platform of POSTIZ_TARGET_PLATFORMS) {
+    const match = integrations.find(i => i.providerIdentifier === platform);
+    if (!match) perPlatform[platform] = { state: 'missing' };
+    else if (match.disabled) perPlatform[platform] = { state: 'disabled', name: match.name, id: match.id };
+    else perPlatform[platform] = { state: 'connected', name: match.name, id: match.id };
+  }
+  return { kind: 'ok', perPlatform, reconnectUrl };
+}
+
 export interface CreatePostInput {
   platform: Platform;
   integrationId: string;

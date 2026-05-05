@@ -1,7 +1,7 @@
 import { existsSync, accessSync, constants } from 'node:fs';
 import { DecisionLog } from '../decisions/log.js';
 import { findStuckSlugs } from '../dispatch.js';
-import { PostizClient, type PostizIntegration } from '../platforms/postiz.js';
+import { PostizClient, probePostizIntegrations, type PostizIntegration } from '../platforms/postiz.js';
 import { config } from '../config.js';
 import { run } from '../lib/process.js';
 import { createDefaultRegistry } from '../tools/index.js';
@@ -193,23 +193,21 @@ async function buildPostizDepChecks(
   });
 
   if (apiKey) {
-    try {
-      const integrations = await listIntegrations();
+    const probe = await probePostizIntegrations(apiKey, listIntegrations);
+    if (probe.kind === 'unreachable') {
+      out.push({ label: 'Postiz integrations', ok: false, detail: `could not query: ${probe.message}`, required: false, warning: true });
+    } else if (probe.kind === 'ok') {
       const wanted: Array<'x' | 'tiktok' | 'instagram' | 'youtube'> = ['x', 'tiktok', 'instagram', 'youtube'];
-      const reconnectUrl = config.postiz.apiUrl.replace(/\/public\/v1$/, '');
       for (const p of wanted) {
-        const match = integrations.find(i => i.providerIdentifier === p);
-        if (!match) {
-          out.push({ label: `${p} integration`, ok: false, detail: `not connected; connect at ${reconnectUrl}`, required: false, warning: true });
-        } else if (match.disabled) {
-          out.push({ label: `${p} integration`, ok: false, detail: `${match.name} disabled; reconnect at ${reconnectUrl}`, required: false, warning: true });
+        const status = probe.perPlatform[p];
+        if (!status || status.state === 'missing') {
+          out.push({ label: `${p} integration`, ok: false, detail: `not connected; connect at ${probe.reconnectUrl}`, required: false, warning: true });
+        } else if (status.state === 'disabled') {
+          out.push({ label: `${p} integration`, ok: false, detail: `${status.name} disabled; reconnect at ${probe.reconnectUrl}`, required: false, warning: true });
         } else {
-          out.push({ label: `${p} integration`, ok: true, detail: match.name, required: false });
+          out.push({ label: `${p} integration`, ok: true, detail: status.name, required: false });
         }
       }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      out.push({ label: 'Postiz integrations', ok: false, detail: `could not query: ${msg}`, required: false, warning: true });
     }
   }
 
