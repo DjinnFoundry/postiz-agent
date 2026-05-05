@@ -1,4 +1,5 @@
-import type { Platform } from '../types.js';
+import { z } from 'zod';
+import { PlatformSchema, type Platform } from '../types.js';
 import type { TenantContext } from '../core/tenant.js';
 import type { CtaVariant } from './ctas.js';
 
@@ -18,46 +19,68 @@ export interface BrandContext {
 }
 
 /**
- * Build a BrandContext from a TenantContext. The tenant's brand block is a
- * `Record<string, unknown>` (open-ended for future fields) so we coerce the
- * known shape carefully and ignore anything we don't recognise yet.
+ * Schema for the open-ended `brand` block stored in tenants/<slug>/config.json.
+ * Two keys are accepted for the hashtag list — `defaultHashtags` (the
+ * canonical name written by the init wizard) and `hashtags` (a friendlier
+ * alias for hand-edited configs). CTA entries below the minimum {id, text}
+ * shape are dropped silently rather than failing the whole parse, because
+ * brand config errors should degrade to "use defaults" not "publish blows up".
+ */
+const NonEmptyTrimmedString = z.string().trim().min(1);
+
+const CtaVariantSchema = z.object({
+  id: z.string(),
+  text: z.string(),
+});
+
+const BrandOverridesSchema = z.object({
+  name: NonEmptyTrimmedString.optional(),
+  defaultHashtags: z.array(z.unknown()).optional(),
+  hashtags: z.array(z.unknown()).optional(),
+  ctas: z.record(z.unknown()).optional(),
+}).passthrough();
+
+/**
+ * Build a BrandContext from a TenantContext. Anything we don't recognise
+ * passes through to the open-ended `brand` block; anything that fails the
+ * shape check is dropped so the caption pipeline always has something
+ * usable.
  */
 export function brandFromTenant(tenant: TenantContext): BrandContext {
-  const brand = tenant.brand ?? {};
+  const parsed = BrandOverridesSchema.safeParse(tenant.brand ?? {});
+  if (!parsed.success) return {};
+
+  const overrides = parsed.data;
   const out: BrandContext = {};
+  if (overrides.name) out.name = overrides.name;
 
-  if (typeof brand.name === 'string' && brand.name.trim()) {
-    out.name = brand.name.trim();
-  }
+  const tags = pickHashtags(overrides.defaultHashtags ?? overrides.hashtags);
+  if (tags.length) out.hashtags = tags;
 
-  if (Array.isArray(brand.defaultHashtags)) {
-    const tags = brand.defaultHashtags.filter((t): t is string => typeof t === 'string' && t.trim().length > 0);
-    if (tags.length) out.hashtags = tags;
-  } else if (Array.isArray((brand as { hashtags?: unknown }).hashtags)) {
-    const tags = ((brand as { hashtags?: unknown }).hashtags as unknown[])
-      .filter((t): t is string => typeof t === 'string' && t.trim().length > 0);
-    if (tags.length) out.hashtags = tags;
-  }
-
-  const ctas = (brand as { ctas?: unknown }).ctas;
-  if (ctas && typeof ctas === 'object' && !Array.isArray(ctas)) {
-    const parsed: Partial<Record<Platform, CtaVariant[]>> = {};
-    for (const [platform, list] of Object.entries(ctas as Record<string, unknown>)) {
-      if (!isValidPlatform(platform) || !Array.isArray(list)) continue;
-      const variants: CtaVariant[] = [];
-      for (const v of list) {
-        if (v && typeof v === 'object' && typeof (v as CtaVariant).id === 'string' && typeof (v as CtaVariant).text === 'string') {
-          variants.push({ id: (v as CtaVariant).id, text: (v as CtaVariant).text });
-        }
-      }
-      if (variants.length) parsed[platform] = variants;
-    }
-    if (Object.keys(parsed).length) out.ctas = parsed;
-  }
+  const ctas = pickCtas(overrides.ctas);
+  if (ctas) out.ctas = ctas;
 
   return out;
 }
 
-function isValidPlatform(s: string): s is Platform {
-  return s === 'x' || s === 'tiktok' || s === 'instagram' || s === 'youtube' || s === 'spotify';
+function pickHashtags(raw: unknown[] | undefined): string[] {
+  if (!raw) return [];
+  return raw.filter((t): t is string => typeof t === 'string' && t.trim().length > 0);
+}
+
+function pickCtas(raw: Record<string, unknown> | undefined): Partial<Record<Platform, CtaVariant[]>> | undefined {
+  if (!raw) return undefined;
+  const out: Partial<Record<Platform, CtaVariant[]>> = {};
+  for (const [platformKey, list] of Object.entries(raw)) {
+    const platform = PlatformSchema.safeParse(platformKey);
+    if (!platform.success) continue;
+    if (!Array.isArray(list)) continue;
+    const variants: CtaVariant[] = [];
+    for (const v of list) {
+      const parsed = CtaVariantSchema.safeParse(v);
+      if (parsed.success) variants.push(parsed.data);
+    }
+    if (variants.length) out[platform.data] = variants;
+  }
+  return Object.keys(out).length ? out : undefined;
 }

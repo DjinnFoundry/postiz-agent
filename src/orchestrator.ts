@@ -13,7 +13,7 @@ import { notifyFailure } from './lib/alerts.js';
 import { wasRecentlyPublished } from './idempotency.js';
 import { moderateWords } from './media/caption-moderation.js';
 import type { ContentBundle } from './core/content-bundle.js';
-import { ContentBundleSchema } from './core/content-bundle.js';
+import { ContentBundleSchema, getWordCount, getEstimatedDurationMin } from './core/content-bundle.js';
 import { classifyError } from './core/errors.js';
 import { preflightPlatform, type PreflightResult } from './core/preflight.js';
 import type { BrandContext } from './copy/brand.js';
@@ -91,8 +91,8 @@ export class Orchestrator {
   async publish(opts: PublishOptions): Promise<PublishReport> {
     const runId = randomUUID();
     const bundle = this.resolveBundle(opts);
-    const wordCount = (bundle.sourceMeta?.wordCount as number | undefined) ?? 0;
-    const durationMin = (bundle.sourceMeta?.estimatedDurationMin as number | undefined) ?? 0;
+    const wordCount = getWordCount(bundle) ?? 0;
+    const durationMin = getEstimatedDurationMin(bundle) ?? 0;
     console.log(`\nstory: "${bundle.text.title ?? bundle.id}" (${wordCount} words, ${durationMin}min)`);
 
     const workDir = join(config.paths.tmpDir, bundle.id);

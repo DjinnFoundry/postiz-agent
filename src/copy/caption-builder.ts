@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { ContentBundle, Recipient, RecipientShareConsent } from '../core/content-bundle.js';
+import { getEstimatedDurationMin, getVocabularioNuevo } from '../core/content-bundle.js';
 import type { Platform } from '../types.js';
 import { selectCta, type CtaVariant } from './ctas.js';
 import { deriveHashtags, primaryLocale } from './hashtags.js';
@@ -179,11 +180,10 @@ function buildYoutube(f: { bundle: ContentBundle; title: string; tagline: string
   const teaser = redactName(extractTeaser(f.bundle.text.body, { maxChars: 500 }), f.bundle.recipient);
   const mood = f.bundle.theme?.mood ?? 'cuento';
   const forWhom = f.tagline ? `para ${f.tagline}` : 'hecho a medida';
-  const duration = (f.bundle.sourceMeta?.estimatedDurationMin as number | undefined);
+  const duration = getEstimatedDurationMin(f.bundle);
   const durationLine = duration != null ? ` · Duración: ~${duration} min` : '';
-  const vocab = Array.isArray(f.bundle.sourceMeta?.vocabularioNuevo) && (f.bundle.sourceMeta!.vocabularioNuevo as unknown[]).length
-    ? `\nVocabulario nuevo: ${(f.bundle.sourceMeta!.vocabularioNuevo as string[]).join(', ')}`
-    : '';
+  const vocabList = getVocabularioNuevo(f.bundle);
+  const vocab = vocabList?.length ? `\nVocabulario nuevo: ${vocabList.join(', ')}` : '';
   const hashtagLine = f.hashtags.map(h => `#${h}`).join(' ');
   return [
     `"${title}"`,

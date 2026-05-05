@@ -3,6 +3,7 @@ import { config } from '../config.js';
 import { probeDurationSec } from '../lib/ffprobe.js';
 import { AudioKidsAdapter } from '../adapters/audiokids.js';
 import { firstSentences } from '../lib/sentences.js';
+import { getGeneratedAt } from '../core/content-bundle.js';
 
 export interface PodcastChannelMeta {
   title: string;
@@ -65,7 +66,7 @@ export class SpotifyRssBuilder {
       // file mtime (unstable; would reorder the feed + re-notify subscribers on
       // any file touch). Adapter pulls it from sourceMeta.generatedAt for both
       // v1 (meta.generatedAt) and v2 (parsed from the slug timestamp suffix).
-      const generatedAt = bundle.sourceMeta?.generatedAt as string | undefined;
+      const generatedAt = getGeneratedAt(bundle);
       const pubSource = generatedAt
         ? new Date(generatedAt)
         : new Date(c.mtimeMs);

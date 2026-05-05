@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { config } from '../config.js';
 import { run } from '../lib/process.js';
 import type { ContentBundle } from '../core/content-bundle.js';
-import { resolveTagline } from '../core/content-bundle.js';
+import { resolveTagline, getEstimatedDurationMin, getVocabularioNuevo } from '../core/content-bundle.js';
 
 export interface YoutubeUploadInput {
   videoPath: string;
@@ -50,10 +50,9 @@ export class YoutubeAdapter {
     const mood = bundle.theme?.mood ?? 'cuento';
     const tagline = resolveTagline(bundle);
     const forWhom = tagline ? `para ${tagline}` : 'hecho a medida';
-    const durationMin = (bundle.sourceMeta?.estimatedDurationMin as number | undefined) ?? null;
-    const vocab = Array.isArray(bundle.sourceMeta?.vocabularioNuevo) && (bundle.sourceMeta!.vocabularioNuevo as unknown[]).length
-      ? `\n\nVocabulario nuevo: ${(bundle.sourceMeta!.vocabularioNuevo as string[]).join(', ')}`
-      : '';
+    const durationMin = getEstimatedDurationMin(bundle);
+    const vocabList = getVocabularioNuevo(bundle);
+    const vocab = vocabList?.length ? `\n\nVocabulario nuevo: ${vocabList.join(', ')}` : '';
     const durationLine = durationMin != null ? ` · Duración: ~${durationMin} min` : '';
     return (
       `${bundle.text.body.slice(0, 300).trim()}...\n\n` +

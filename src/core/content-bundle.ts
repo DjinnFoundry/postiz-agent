@@ -66,14 +66,65 @@ export const ContentBundleSchema = z.object({
   beats: z.array(BeatSchema).optional(),
 
   /**
-   * Pipeline-specific passthrough metadata. Tools SHOULD NOT read directly from here;
-   * adapters must map relevant fields into typed ContentBundle fields. Exists as an
-   * escape hatch during migration.
+   * Pipeline-specific passthrough metadata. The shape is open-ended (every
+   * adapter writes whatever its source emits), but a few keys are read by
+   * downstream tools — `wordCount`, `estimatedDurationMin`, `vocabularioNuevo`,
+   * `generatedAt`. Always read these via the typed accessors below
+   * (getWordCount, getEstimatedDurationMin, getVocabularioNuevo, getGeneratedAt)
+   * so the cast lives in one place and renaming a key is a one-line change.
    */
   sourceMeta: z.record(z.unknown()).optional(),
 }).strict();
 
 export type ContentBundle = z.infer<typeof ContentBundleSchema>;
+
+/**
+ * Subset of `sourceMeta` keys that downstream tools read. Adapters are
+ * encouraged to populate these (the AudioKids adapter does, for both v1 and
+ * v2 layouts) so the rest of the toolkit can rely on them. Anything outside
+ * this shape is still passed through verbatim.
+ */
+export interface BundleSourceMeta {
+  /** Word count of the body text. Drives the orchestrator status line and
+   *  caption-builder's duration hint when estimatedDurationMin is absent. */
+  wordCount?: number;
+  /** Estimated narration duration in minutes. Used by caption-builder /
+   *  youtube for the "X min de cuento" annotation. */
+  estimatedDurationMin?: number;
+  /** Vocabulary list (Spanish: "vocabulario nuevo") to surface in the
+   *  YouTube description and IG caption. */
+  vocabularioNuevo?: string[];
+  /** ISO 8601 generation timestamp; used by the RSS feed as the pubDate so
+   *  re-renders don't reshuffle the feed. */
+  generatedAt?: string;
+}
+
+/** Read a typed value from sourceMeta when the key matches the expected type;
+ *  returns undefined for unknown / wrong-typed entries. Centralises the cast
+ *  so individual call sites can stay typed. */
+export function getWordCount(bundle: ContentBundle): number | undefined {
+  return readNumber(bundle.sourceMeta?.wordCount);
+}
+
+export function getEstimatedDurationMin(bundle: ContentBundle): number | undefined {
+  return readNumber(bundle.sourceMeta?.estimatedDurationMin);
+}
+
+export function getVocabularioNuevo(bundle: ContentBundle): string[] | undefined {
+  const raw = bundle.sourceMeta?.vocabularioNuevo;
+  if (!Array.isArray(raw)) return undefined;
+  const filtered = raw.filter((v): v is string => typeof v === 'string');
+  return filtered.length ? filtered : undefined;
+}
+
+export function getGeneratedAt(bundle: ContentBundle): string | undefined {
+  const raw = bundle.sourceMeta?.generatedAt;
+  return typeof raw === 'string' ? raw : undefined;
+}
+
+function readNumber(raw: unknown): number | undefined {
+  return typeof raw === 'number' && Number.isFinite(raw) ? raw : undefined;
+}
 
 /** Return the tagline a publisher/renderer should show. Derives from recipient if consent allows. */
 export function resolveTagline(bundle: ContentBundle): string | undefined {
