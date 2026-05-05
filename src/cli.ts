@@ -351,6 +351,7 @@ program.commands.find(c => c.name() === 'decisions')!
 program
   .command('status')
   .description('Check environment health: tools installed, services reachable, dirs exist')
+  .option('-t, --tenant <slug>', 'tenant slug (decisions/uploads/theme counts come from this tenant)', 'default')
   .option('--json', 'emit machine-readable JSON', false)
   .option('--strict', 'fail (exit 1) on any warning, including disabled integrations', false)
   .addHelpText('after', `
@@ -364,7 +365,19 @@ Exit codes:
   1 → at least one required check failed, OR any warning fired with --strict
 `)
   .action(async (opts) => {
-    const report = await runStatus();
+    const ctx = buildTenantBundle(opts.tenant);
+    const themeAll = ctx.themeDecisions.all();
+    const themeExists = existsSync(ctx.tenant.paths.themeDecisions);
+    const ucSummary = ctx.uploadCache.summarize();
+    const ucExists = existsSync(ctx.tenant.paths.uploadCache);
+    const report = await runStatus({
+      decisions: ctx.decisions.list(),
+      audiokidsDir: ctx.tenant.audiokids.outputDir,
+      postizApiKey: ctx.tenant.postiz.apiKey,
+      listIntegrations: () => ctx.postiz().listIntegrations(),
+      uploadCache: { count: ucSummary.count, oldestUploadedAt: ucSummary.oldestUploadedAt, exists: ucExists },
+      themeDecisions: { count: Object.keys(themeAll).length, exists: themeExists },
+    });
     if (opts.json) process.stdout.write(formatStatusReport(report, 'json') + '\n');
     else console.log(formatStatusReport(report, 'human'));
 
@@ -379,10 +392,12 @@ Exit codes:
 program
   .command('integrations')
   .description('List connected Postiz integrations (X, TikTok, Instagram, YouTube accounts)')
+  .option('-t, --tenant <slug>', 'tenant slug (selects which Postiz instance to query)', 'default')
   .option('--json', 'emit machine-readable JSON', false)
   .action(async (opts) => {
+    const ctx = buildTenantBundle(opts.tenant);
     try {
-      const integrations = await new PostizClient().listIntegrations();
+      const integrations = await ctx.postiz().listIntegrations();
       if (opts.json) {
         process.stdout.write(JSON.stringify(integrations, null, 2) + '\n');
       } else {
@@ -391,7 +406,7 @@ program
         }
       }
     } catch (err) {
-      console.error(`Could not reach Postiz at ${config.postiz.apiUrl}: ${err instanceof Error ? err.message : err}`);
+      console.error(`Could not reach Postiz at ${ctx.tenant.postiz.apiUrl}: ${err instanceof Error ? err.message : err}`);
       process.exit(1);
     }
   });
@@ -400,6 +415,7 @@ program
 program
   .command('doctor')
   .description('Deep diagnostic: integrations, stuck slugs, recent failures, caches. Prints remediation hints.')
+  .option('-t, --tenant <slug>', 'tenant slug (each tenant has its own decisions log + caches)', 'default')
   .option('--json', 'emit the full report as JSON (one object on stdout)', false)
   .addHelpText('after', `
 Groups every signal an autonomous agent needs to self-triage into one command:
@@ -407,8 +423,20 @@ environment, postiz, audiokids, stuck-slugs, recent-failures, upload-cache,
 theme-decisions. Exit 1 when any section reports a blocking issue (permanent,
 needs-config, needs-human) or when >0 stuck slugs are detected.
 `)
-  .action(async (opts: { json?: boolean }) => {
-    const report = await runDoctor();
+  .action(async (opts: { tenant: string; json?: boolean }) => {
+    const ctx = buildTenantBundle(opts.tenant);
+    const themeAll = ctx.themeDecisions.all();
+    const themeExists = existsSync(ctx.tenant.paths.themeDecisions);
+    const ucSummary = ctx.uploadCache.summarize();
+    const ucExists = existsSync(ctx.tenant.paths.uploadCache);
+    const report = await runDoctor({
+      decisions: ctx.decisions.list(),
+      audiokidsDir: ctx.tenant.audiokids.outputDir,
+      postizApiKey: ctx.tenant.postiz.apiKey,
+      listIntegrations: () => ctx.postiz().listIntegrations(),
+      uploadCache: { count: ucSummary.count, oldestUploadedAt: ucSummary.oldestUploadedAt, exists: ucExists },
+      themeDecisions: { count: Object.keys(themeAll).length, exists: themeExists },
+    });
     if (opts.json) process.stdout.write(JSON.stringify(report, null, 2) + '\n');
     else console.log(formatDoctorReport(report));
     process.exit(report.ok ? 0 : 1);
@@ -418,20 +446,22 @@ needs-config, needs-human) or when >0 stuck slugs are detected.
 program
   .command('stats')
   .description('Roll up the decision log: success rate, top remediations, stuck slugs, CTA variants.')
+  .option('-t, --tenant <slug>', 'tenant slug (rolls up that tenant\'s decisions log)', 'default')
   .option('--days <n>', 'window in days', '30')
   .option('--platform <platform>', 'filter to a single platform (x, tiktok, instagram, youtube, spotify)')
   .option('--json', 'emit the report as JSON', false)
   .addHelpText('after', `
 Read-only digest for a quick operational pulse. Always exits 0.
 `)
-  .action(async (opts: { days?: string; platform?: string; json?: boolean }) => {
+  .action(async (opts: { tenant: string; days?: string; platform?: string; json?: boolean }) => {
     const days = opts.days ? Number.parseInt(opts.days, 10) : 30;
     if (!Number.isFinite(days) || days <= 0) {
       console.error(`invalid --days value: ${opts.days}`);
       process.exit(1);
     }
     const platform = opts.platform ? PlatformSchema.parse(opts.platform) : undefined;
-    const report = await runStats({ days, platform });
+    const ctx = buildTenantBundle(opts.tenant);
+    const report = await runStats({ days, platform, decisions: ctx.decisions.list() });
     if (opts.json) process.stdout.write(JSON.stringify(report, null, 2) + '\n');
     else console.log(formatStatsReport(report));
     process.exit(0);
@@ -456,14 +486,16 @@ matching CTA variant as avgEngagement {avgViews, avgLikes, avgComments,
 avgShares, sampleSize}. Records whose postId is not in the log are skipped with
 a warning; malformed JSONL lines are skipped, remaining lines still process.
 `)
-  .action(async (opts: { days?: string; platform?: string; json?: boolean; ingest?: string }) => {
+  .option('-t, --tenant <slug>', 'tenant slug (rolls up that tenant\'s decisions log)', 'default')
+  .action(async (opts: { tenant: string; days?: string; platform?: string; json?: boolean; ingest?: string }) => {
     const days = opts.days ? Number.parseInt(opts.days, 10) : 30;
     if (!Number.isFinite(days) || days <= 0) {
       console.error(`invalid --days value: ${opts.days}`);
       process.exit(1);
     }
     const platform = opts.platform ? PlatformSchema.parse(opts.platform) : undefined;
-    const report = await runCtaAb({ days, platform, ingestFile: opts.ingest });
+    const ctx = buildTenantBundle(opts.tenant);
+    const report = await runCtaAb({ days, platform, ingestFile: opts.ingest, decisions: ctx.decisions.list() });
     if (opts.json) process.stdout.write(JSON.stringify(report, null, 2) + '\n');
     else console.log(formatCtaAbReport(report));
     process.exit(0);

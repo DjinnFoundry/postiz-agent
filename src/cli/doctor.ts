@@ -1,8 +1,9 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { findStuckSlugs } from '../dispatch.js';
 import { DecisionLog } from '../decisions/log.js';
 import { PostizClient, type PostizIntegration } from '../platforms/postiz.js';
+import { AudioKidsAdapter } from '../adapters/audiokids.js';
 import { config } from '../config.js';
 import type { DecisionLogEntry, Platform } from '../types.js';
 
@@ -134,9 +135,12 @@ function buildAudiokidsSection(audiokidsDir: string): DoctorItem[] {
     return items;
   }
   items.push({ label: `output dir exists (${audiokidsDir})`, status: 'ok' });
+  // Defer to the adapter so v1 (flat <slug>.json+.mp3) AND v2 (subdir/story.json)
+  // candidates both count. Replacing this with a flat readdir walk is what made
+  // dr go "0 stories" right after the AudioKids upstream switched to subdirs.
   let storyCount = 0;
   try {
-    storyCount = readdirSync(audiokidsDir).filter(f => f.endsWith('.json') && !f.startsWith('.')).length;
+    storyCount = new AudioKidsAdapter(audiokidsDir).listCandidates().length;
   } catch {
     storyCount = 0;
   }
@@ -144,7 +148,7 @@ function buildAudiokidsSection(audiokidsDir: string): DoctorItem[] {
     items.push({
       label: 'stories present (0)',
       status: 'warn',
-      hint: 'no .json stories in AudioKids output; run AudioKids generation first',
+      hint: 'no AudioKids stories in the output dir; run AudioKids generation first',
     });
   } else {
     items.push({ label: `stories present (${storyCount})`, status: 'ok' });
