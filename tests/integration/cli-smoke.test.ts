@@ -5,15 +5,22 @@ import { resolve } from 'node:path';
 
 const ROOT = resolve(__dirname, '..', '..');
 
-function runCli(args: string[], opts: { timeout?: number } = {}) {
+function runCli(args: string[], opts: { timeout?: number; env?: Record<string, string> } = {}) {
   // Invoke tsx directly: pnpm and `pnpm exec` both print a header line that
   // contaminates JSON stdout; the .bin shim does not.
+  // Tests pin AUDIOKIDS_OUTPUT_DIR at the in-tree fixture so smokes stay
+  // hermetic regardless of what the developer's .env points at in real use.
   const tsx = resolve(ROOT, 'node_modules', '.bin', 'tsx');
   const result = spawnSync(tsx, ['src/cli.ts', ...args], {
     cwd: ROOT,
     encoding: 'utf-8',
     timeout: opts.timeout ?? 30_000,
-    env: { ...process.env, NO_COLOR: '1' },
+    env: {
+      ...process.env,
+      NO_COLOR: '1',
+      AUDIOKIDS_OUTPUT_DIR: resolve(ROOT, 'tests', 'fixtures', 'audiokids-output'),
+      ...(opts.env ?? {}),
+    },
   });
   return {
     status: result.status,
