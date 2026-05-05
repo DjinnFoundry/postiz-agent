@@ -1,6 +1,7 @@
 import type { Command } from 'commander';
 import { createInboxRegistry } from '../../inbox/registry.js';
 import type { Platform } from '../../types.js';
+import { printJson, printJsonPretty } from '../io.js';
 
 /**
  * `inbox`: read incoming replies/comments/mentions and post responses. The
@@ -34,7 +35,7 @@ export function register(program: Command): void {
         limit: Number.parseInt(opts.limit, 10),
       });
       if (opts.json) {
-        process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+        printJsonPretty(result);
         return;
       }
       if (result.items.length === 0) {
@@ -69,11 +70,11 @@ export function register(program: Command): void {
       }
       try {
         const result = await provider.postReply(opts.to, opts.text);
-        if (opts.json) process.stdout.write(JSON.stringify({ ok: true, ...result }) + '\n');
+        if (opts.json) printJson({ ok: true, ...result });
         else console.log(`replied: ${result.id}${result.url ? ` ${result.url}` : ''}`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        if (opts.json) process.stdout.write(JSON.stringify({ ok: false, error: msg }) + '\n');
+        if (opts.json) printJson({ ok: false, error: msg });
         else console.error(`reply failed: ${msg}`);
         process.exit(1);
       }

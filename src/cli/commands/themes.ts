@@ -7,6 +7,7 @@ import {
   checkDecisions,
   formatCheckDecisions,
 } from '../themes.js';
+import { printJson, printJsonPretty } from '../io.js';
 
 /**
  * `themes`: inspect the treatment catalog used by the theme engine.
@@ -28,7 +29,7 @@ export function register(program: Command): void {
     .action((opts: { json?: boolean }) => {
       const report = listThemes();
       // JSON shape is a bare array — matches doctor/stats/tools precedent of "| jq length" working directly.
-      if (opts.json) process.stdout.write(JSON.stringify(report.treatments, null, 2) + '\n');
+      if (opts.json) printJsonPretty(report.treatments);
       else console.log(formatThemesList(report));
     });
 
@@ -43,7 +44,7 @@ export function register(program: Command): void {
         console.error(`unknown treatment: ${id}. Available: ${desc.knownIds.join(', ')}`);
         process.exit(1);
       }
-      if (opts.json) process.stdout.write(JSON.stringify(desc, null, 2) + '\n');
+      if (opts.json) printJsonPretty(desc);
       else console.log(formatThemeDescription(desc));
     });
 
@@ -67,7 +68,7 @@ Examples:
 `)
     .action((opts: { json?: boolean; fix?: boolean }) => {
       const result = checkDecisions({ fix: opts.fix });
-      if (opts.json) process.stdout.write(JSON.stringify(result.stale, null, 2) + '\n');
+      if (opts.json) printJsonPretty(result.stale);
       else console.log(formatCheckDecisions(result, { fix: opts.fix }));
       process.exit(0);
     });

@@ -1,6 +1,7 @@
 import type { Command } from 'commander';
 import { runDoctor, formatDoctorReport } from '../doctor.js';
 import { buildTenantBundle } from '../tenant-context.js';
+import { printJsonOrHuman } from '../io.js';
 
 /**
  * `doctor`: deep diagnostic. Groups every signal an autonomous agent needs
@@ -31,8 +32,7 @@ needs-config, needs-human) or when >0 stuck slugs are detected.
         uploadCache: summaries.uploadCache,
         themeDecisions: summaries.themeDecisions,
       });
-      if (opts.json) process.stdout.write(JSON.stringify(report, null, 2) + '\n');
-      else console.log(formatDoctorReport(report));
+      printJsonOrHuman(opts.json, report, () => formatDoctorReport(report), { pretty: true });
       process.exit(report.ok ? 0 : 1);
     });
 }

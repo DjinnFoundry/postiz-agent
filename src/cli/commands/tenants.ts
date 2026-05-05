@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 import { listTenants, loadTenant } from '../../core/tenant.js';
+import { printJsonPretty } from '../io.js';
 
 /**
  * `tenants list`: enumerate every tenant on disk. The default tenant is
@@ -29,7 +30,7 @@ export function register(program: Command): void {
         };
       });
       if (opts.json) {
-        process.stdout.write(JSON.stringify(items, null, 2) + '\n');
+        printJsonPretty(items);
         return;
       }
       if (items.length === 0) {

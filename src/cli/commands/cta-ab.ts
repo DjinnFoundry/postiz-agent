@@ -2,6 +2,7 @@ import type { Command } from 'commander';
 import { runCtaAb, formatCtaAbReport } from '../cta-ab.js';
 import { buildTenantBundle } from '../tenant-context.js';
 import { PlatformSchema } from '../../types.js';
+import { printJsonOrHuman } from '../io.js';
 
 /**
  * `cta-ab`: zoom into CTA variant performance. Per variant: uses, success rate,
@@ -37,8 +38,7 @@ a warning; malformed JSONL lines are skipped, remaining lines still process.
       const platform = opts.platform ? PlatformSchema.parse(opts.platform) : undefined;
       const ctx = buildTenantBundle(opts.tenant);
       const report = await runCtaAb({ days, platform, ingestFile: opts.ingest, decisions: ctx.decisions.list() });
-      if (opts.json) process.stdout.write(JSON.stringify(report, null, 2) + '\n');
-      else console.log(formatCtaAbReport(report));
+      printJsonOrHuman(opts.json, report, () => formatCtaAbReport(report), { pretty: true });
       process.exit(0);
     });
 }

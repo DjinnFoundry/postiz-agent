@@ -3,6 +3,7 @@ import { Orchestrator } from '../../orchestrator.js';
 import { buildTenantBundle } from '../tenant-context.js';
 import { brandFromTenant } from '../../copy/brand.js';
 import { parsePlatforms, resolvePublishSource } from '../runner.js';
+import { printJson } from '../io.js';
 
 /**
  * `render`: build MP4 files only, no upload. Internally `publish --dry-run` with
@@ -39,7 +40,7 @@ running the full publish pipeline. Internally equivalent to 'publish --dry-run'.
         reason: 'preview render (no upload)',
         brand,
       });
-      if (opts.json) process.stdout.write(JSON.stringify(report) + '\n');
+      if (opts.json) printJson(report);
       else console.log('\n' + JSON.stringify(report, null, 2));
       if (report.fatalCaptionFailure) process.exit(1);
       process.exit(report.results.every(r => r.success) ? 0 : 1);

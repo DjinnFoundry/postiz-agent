@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 import { buildTenantBundle } from '../tenant-context.js';
+import { printJsonPretty } from '../io.js';
 
 /**
  * `integrations`: list connected Postiz accounts (X, TikTok, IG, YouTube).
@@ -18,7 +19,7 @@ export function register(program: Command): void {
       try {
         const integrations = await ctx.postiz().listIntegrations();
         if (opts.json) {
-          process.stdout.write(JSON.stringify(integrations, null, 2) + '\n');
+          printJsonPretty(integrations);
         } else {
           for (const i of integrations) {
             console.log(`${i.disabled ? '○' : '●'} ${i.providerIdentifier.padEnd(12)} ${i.name} (${i.id})`);

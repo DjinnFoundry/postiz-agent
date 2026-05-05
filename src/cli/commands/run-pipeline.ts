@@ -6,6 +6,7 @@ import { PipelineRunner, PipelineSpecSchema, type PipelineSpec } from '../../cor
 import { createDefaultRegistry } from '../../tools/index.js';
 import { consoleLogger, silentLogger } from '../../core/tool.js';
 import { resolveBundle } from '../runner.js';
+import { printJson, printJsonPretty } from '../io.js';
 
 /**
  * `run-pipeline`: execute a declarative pipeline (JSON spec) against a bundle.
@@ -41,19 +42,19 @@ export function register(program: Command): void {
         dryRun: opts.dryRun,
         logger: silent ? silentLogger : consoleLogger,
         onStepComplete: opts.stream
-          ? (step) => process.stdout.write(JSON.stringify({ type: 'step', ...step }) + '\n')
+          ? (step) => printJson({ type: 'step', ...step })
           : undefined,
       });
       if (opts.stream) {
-        process.stdout.write(JSON.stringify({
+        printJson({
           type: 'summary',
           pipeline: result.pipeline,
           bundleId: result.bundleId,
           ok: result.ok,
           stepCount: result.results.length,
-        }) + '\n');
+        });
       } else if (opts.json) {
-        process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+        printJsonPretty(result);
       } else {
         console.log(`\npipeline ${spec.name} → ${result.ok ? 'OK' : 'FAILED'}`);
         for (const step of result.results) {

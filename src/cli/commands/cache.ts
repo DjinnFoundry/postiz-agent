@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 import { pruneUploadCache } from '../housekeeping.js';
+import { printJson } from '../io.js';
 
 /**
  * `cache prune`: drop entries from the Postiz upload dedup cache
@@ -24,7 +25,7 @@ Examples:
     .action(async (opts: { dryRun?: boolean; json?: boolean }) => {
       const result = pruneUploadCache({ dryRun: opts.dryRun });
       if (opts.json) {
-        process.stdout.write(JSON.stringify(result) + '\n');
+        printJson(result);
       } else {
         const verb = result.dryRun ? 'would remove' : 'removed';
         console.log(`${verb} ${result.removed} entry(ies), kept ${result.kept}`);

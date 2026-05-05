@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import type { Command } from 'commander';
 import { config } from '../../config.js';
 import { pruneRenderLogs } from '../housekeeping.js';
+import { printJson } from '../io.js';
 
 /**
  * `logs`: inspect captured render stderr from data/render-logs (written
@@ -57,7 +58,7 @@ Examples:
       }
       const result = await pruneRenderLogs({ olderThanDays: days, dryRun: opts.dryRun });
       if (opts.json) {
-        process.stdout.write(JSON.stringify(result) + '\n');
+        printJson(result);
       } else {
         const verb = result.dryRun ? 'would remove' : 'removed';
         console.log(`${verb} ${result.removed} log(s), kept ${result.kept}, freed ${result.bytesFreed} bytes from ${result.dir}`);

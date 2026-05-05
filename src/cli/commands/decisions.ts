@@ -5,6 +5,7 @@ import { loadTenant } from '../../core/tenant.js';
 import { validateSlug } from '../../lib/slug.js';
 import { PlatformSchema, type Platform } from '../../types.js';
 import { formatStuckTable } from '../runner.js';
+import { printJson } from '../io.js';
 
 /**
  * `decisions`: read-side queries of data/decisions.jsonl. Three modes:
@@ -69,7 +70,7 @@ Examples:
         const all = log.list({});
         const platforms = (Object.values(PlatformSchema.enum)) as Platform[];
         const stuck = findStuckSlugs(all, platforms);
-        if (opts.json) process.stdout.write(JSON.stringify(stuck) + '\n');
+        if (opts.json) printJson(stuck);
         else if (opts.pretty) console.log(JSON.stringify(stuck, null, 2));
         else console.log(formatStuckTable(stuck));
         return;
@@ -91,13 +92,13 @@ Examples:
       const log = new DecisionLog();
       if (!opts.force && !log.shouldRotate()) {
         const payload = { rotated: false, reason: 'under threshold; pass --force to rotate anyway' };
-        if (json) process.stdout.write(JSON.stringify(payload) + '\n');
+        if (json) printJson(payload);
         else console.log(payload.reason);
         return;
       }
       const info = log.rotate();
       const payload = { rotated: Boolean(info.rotatedTo), rotatedTo: info.rotatedTo, bytes: info.bytes };
-      if (json) process.stdout.write(JSON.stringify(payload) + '\n');
+      if (json) printJson(payload);
       else if (payload.rotated) console.log(`rotated → ${info.rotatedTo} (${info.bytes} bytes)`);
       else console.log('no active log to rotate');
     });
@@ -111,7 +112,7 @@ Examples:
       const log = new DecisionLog();
       const archives = log.listArchives();
       if (json) {
-        process.stdout.write(JSON.stringify(archives) + '\n');
+        printJson(archives);
         return;
       }
       if (!archives.length) {

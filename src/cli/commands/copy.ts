@@ -4,6 +4,7 @@ import { brandFromTenant } from '../../copy/brand.js';
 import { buildCaptionRich } from '../../copy/caption-builder.js';
 import type { Platform } from '../../types.js';
 import { resolveBundle } from '../runner.js';
+import { printJsonPretty } from '../io.js';
 
 /**
  * `copy preview`: print the caption a publisher would produce for a given
@@ -63,7 +64,7 @@ Examples:
         };
       }
       if (opts.json) {
-        process.stdout.write(JSON.stringify(out, null, 2) + '\n');
+        printJsonPretty(out);
         return;
       }
       for (const [p, data] of Object.entries(out)) {

@@ -6,6 +6,7 @@ import { createDefaultRegistry } from '../../tools/index.js';
 import { consoleLogger, silentLogger } from '../../core/tool.js';
 import { formatToolDescribeHuman, formatToolsDocsIndex, formatToolDocs } from '../tools-docs.js';
 import { resolveBundle } from '../runner.js';
+import { printJsonPretty } from '../io.js';
 
 /**
  * `tools`: introspect and invoke individual tools the way an external agent
@@ -26,7 +27,7 @@ export function register(program: Command): void {
       const registry = createDefaultRegistry();
       const descriptors = registry.list();
       if (opts.json) {
-        process.stdout.write(JSON.stringify(descriptors, null, 2) + '\n');
+        printJsonPretty(descriptors);
         return;
       }
       console.log(`\n${descriptors.length} tools registered:\n`);
@@ -52,7 +53,7 @@ export function register(program: Command): void {
       }
       const [descriptor] = registry.list().filter(d => d.name === name);
       if (opts.json) {
-        process.stdout.write(JSON.stringify(descriptor, null, 2) + '\n');
+        printJsonPretty(descriptor);
         return;
       }
       process.stdout.write(formatToolDescribeHuman(descriptor) + '\n');
@@ -117,18 +118,17 @@ export function register(program: Command): void {
       if (tool.preflight) {
         const pre = await tool.preflight(parsed.data, ctx);
         if (!pre.ok) {
-          const skipped = { ok: false, skipped: true, reason: pre.reason };
-          process.stdout.write(JSON.stringify(skipped, null, 2) + '\n');
+          printJsonPretty({ ok: false, skipped: true, reason: pre.reason });
           process.exit(0);
         }
       }
       try {
         const out = await tool.run(parsed.data, ctx);
         tool.outputSchema.parse(out);
-        process.stdout.write(JSON.stringify({ ok: true, output: out }, null, 2) + '\n');
+        printJsonPretty({ ok: true, output: out });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        process.stdout.write(JSON.stringify({ ok: false, error: msg }, null, 2) + '\n');
+        printJsonPretty({ ok: false, error: msg });
         process.exit(1);
       }
     });

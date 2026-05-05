@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 import { createDefaultRegistry } from '../../adapters/registry.js';
+import { printJsonPretty } from '../io.js';
 
 /**
  * `adapters list`: introspect every BundleAdapter the registry knows about,
@@ -19,7 +20,7 @@ export function register(program: Command): void {
       const registry = createDefaultRegistry();
       const list = registry.list();
       if (opts.json) {
-        process.stdout.write(JSON.stringify(list, null, 2) + '\n');
+        printJsonPretty(list);
         return;
       }
       if (list.length === 0) {

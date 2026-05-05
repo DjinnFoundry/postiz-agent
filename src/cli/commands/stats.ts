@@ -2,6 +2,7 @@ import type { Command } from 'commander';
 import { runStats, formatStatsReport } from '../stats.js';
 import { buildTenantBundle } from '../tenant-context.js';
 import { PlatformSchema } from '../../types.js';
+import { printJsonOrHuman } from '../io.js';
 
 /**
  * `stats`: rollup of the decision log over a window. Per-platform success
@@ -28,8 +29,7 @@ Read-only digest for a quick operational pulse. Always exits 0.
       const platform = opts.platform ? PlatformSchema.parse(opts.platform) : undefined;
       const ctx = buildTenantBundle(opts.tenant);
       const report = await runStats({ days, platform, decisions: ctx.decisions.list() });
-      if (opts.json) process.stdout.write(JSON.stringify(report, null, 2) + '\n');
-      else console.log(formatStatsReport(report));
+      printJsonOrHuman(opts.json, report, () => formatStatsReport(report), { pretty: true });
       process.exit(0);
     });
 }

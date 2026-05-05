@@ -5,6 +5,7 @@ import { selectNextStory } from '../../dispatch.js';
 import { buildTenantBundle } from '../tenant-context.js';
 import { brandFromTenant } from '../../copy/brand.js';
 import { parsePlatforms } from '../runner.js';
+import { printJson } from '../io.js';
 
 /**
  * `dispatch`: cron entry point. Walks the chosen adapter, consults the
@@ -50,11 +51,11 @@ Examples:
       const slug = selectNextStory(candidates, log, platforms);
       if (!slug) {
         const payload = { dispatched: false, reason: 'nothing pending', tenant: opts.tenant };
-        if (opts.json) process.stdout.write(JSON.stringify(payload) + '\n');
+        if (opts.json) printJson(payload);
         else console.log('nothing pending');
         process.exit(0);
       }
-      if (opts.json) process.stdout.write(JSON.stringify({ dispatched: true, slug, adapter: opts.adapter, platforms, tenant: opts.tenant }) + '\n');
+      if (opts.json) printJson({ dispatched: true, slug, adapter: opts.adapter, platforms, tenant: opts.tenant });
       else console.log(`dispatching ${slug} (tenant=${opts.tenant}, adapter=${opts.adapter}) → ${platforms.join(',')}`);
 
       const orch = new Orchestrator({ adapters: ctx.adapters, decisions: ctx.decisions });

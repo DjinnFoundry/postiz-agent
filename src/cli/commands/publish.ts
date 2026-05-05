@@ -4,6 +4,7 @@ import { Orchestrator } from '../../orchestrator.js';
 import { buildTenantBundle } from '../tenant-context.js';
 import { brandFromTenant } from '../../copy/brand.js';
 import { parsePlatforms, resolvePublishSource } from '../runner.js';
+import { printJson } from '../io.js';
 
 /**
  * `publish`: full pipeline — preflight → transcribe → moderate → render → upload.
@@ -67,7 +68,7 @@ The decision log at data/decisions.jsonl records every attempt with reason+resul
         reason: opts.reason,
         brand,
       });
-      if (opts.json) process.stdout.write(JSON.stringify(report) + '\n');
+      if (opts.json) printJson(report);
       else console.log('\n' + JSON.stringify(report, null, 2));
       if (report.fatalCaptionFailure) process.exit(1);
       const failed = report.results.filter(r => !r.success);
