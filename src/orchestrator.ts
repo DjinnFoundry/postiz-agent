@@ -180,91 +180,103 @@ export class Orchestrator {
     runId: string,
   ): Promise<PublishResult> {
     console.log(`→ ${platform}: starting`);
+    const reason = opts.reason ?? DEFAULT_PUBLISH_REASON;
 
+    const preflightSkip = await this.applyPreflight(platform, ctx, captionStatus, baseWarnings, runId, reason);
+    if (preflightSkip) return preflightSkip;
+
+    const idempotencySkip = await this.applyIdempotencyGuard(platform, ctx, opts, captionStatus, baseWarnings, runId, reason);
+    if (idempotencySkip) return idempotencySkip;
+
+    const result = await this.publishWithRetry(this.getPublisher(platform), ctx);
+    const decorated = decorateResult(result, captionStatus, baseWarnings);
+    await this.recordDecisionEntries(decorated, platform, ctx, runId, reason);
+    return decorated;
+  }
+
+  /** Run platform preflight; if it rejects, build the skip result, log it, and return it.
+   *  Returns null when preflight clears so the caller proceeds to publish. */
+  private async applyPreflight(
+    platform: Platform,
+    ctx: PublishContext,
+    captionStatus: CaptionStatus,
+    baseWarnings: string[],
+    runId: string,
+    reason: string,
+  ): Promise<PublishResult | null> {
     const pre = await this.preflight(ctx.bundle, platform);
-    if (!pre.ok) {
-      const success = pre.kind === 'skip';
-      const ts = new Date().toISOString();
-      const result: PublishResult = {
-        platform,
-        success,
-        skipped: true,
-        reason: pre.reason,
-        timestamp: ts,
-        captionStatus,
-        ...(pre.kind !== 'skip' ? { errorClass: pre.kind, error: pre.reason } : {}),
-        ...(pre.hint ? { remediation: { action: 'preflight-fix', humanHint: pre.hint } } : {}),
-        warnings: baseWarnings.length ? [...baseWarnings] : undefined,
-      };
-      await this.decisions.record({
-        action: `publish.${platform}.preflight`,
-        storySlug: ctx.bundle.id,
-        platform,
-        reason: opts.reason ?? 'scheduled daily publication',
-        result,
-        runId,
-      });
-      console.log(`  ${platform} preflight: ${pre.reason}`);
-      return result;
-    }
-
-    if (!opts.force && !opts.dryRun) {
-      const history = this.decisions.list({ storySlug: ctx.bundle.id, platform });
-      const check = wasRecentlyPublished(history, ctx.bundle.id, platform);
-      if (check.recent) {
-        console.log(`  ${platform} skipped: already published in the last 24h (${check.entry?.createdAt})`);
-        const skipped: PublishResult = {
-          platform,
-          success: true,
-          skipped: true,
-          reason: 'already published today',
-          timestamp: new Date().toISOString(),
-          captionStatus,
-          warnings: baseWarnings.length ? [...baseWarnings] : undefined,
-        };
-        await this.decisions.record({
-          action: `publish.${platform}.skipped`,
-          storySlug: ctx.bundle.id,
-          platform,
-          reason: opts.reason ?? 'scheduled daily publication',
-          result: skipped,
-          runId,
-        });
-        return skipped;
-      }
-    }
-
-    const publisher = this.getPublisher(platform);
-    const result = await this.publishWithRetry(publisher, ctx);
-    const decorated: PublishResult = {
-      ...result,
-      captionStatus: result.captionStatus ?? captionStatus,
-      warnings: mergeWarnings(result.warnings, baseWarnings),
+    if (pre.ok) return null;
+    const result: PublishResult = {
+      platform,
+      success: pre.kind === 'skip',
+      skipped: true,
+      reason: pre.reason,
+      timestamp: new Date().toISOString(),
+      captionStatus,
+      ...(pre.kind !== 'skip' ? { errorClass: pre.kind, error: pre.reason } : {}),
+      ...(pre.hint ? { remediation: { action: 'preflight-fix', humanHint: pre.hint } } : {}),
+      warnings: baseWarnings.length ? [...baseWarnings] : undefined,
     };
+    await this.decisions.record({
+      action: `publish.${platform}.preflight`, storySlug: ctx.bundle.id, platform, reason, result, runId,
+    });
+    console.log(`  ${platform} preflight: ${pre.reason}`);
+    return result;
+  }
 
-    if (decorated.parts && decorated.parts.length > 0) {
+  /** Skip + log when a successful publish for (slug, platform) exists in the last
+   *  24h. --force and --dry-run bypass; the latter still hits the publisher so
+   *  preview renders show what a real publish would emit. */
+  private async applyIdempotencyGuard(
+    platform: Platform,
+    ctx: PublishContext,
+    opts: PublishOptions,
+    captionStatus: CaptionStatus,
+    baseWarnings: string[],
+    runId: string,
+    reason: string,
+  ): Promise<PublishResult | null> {
+    if (opts.force || opts.dryRun) return null;
+    const history = this.decisions.list({ storySlug: ctx.bundle.id, platform });
+    const check = wasRecentlyPublished(history, ctx.bundle.id, platform);
+    if (!check.recent) return null;
+    console.log(`  ${platform} skipped: already published in the last 24h (${check.entry?.createdAt})`);
+    const result: PublishResult = {
+      platform,
+      success: true,
+      skipped: true,
+      reason: 'already published today',
+      timestamp: new Date().toISOString(),
+      captionStatus,
+      warnings: baseWarnings.length ? [...baseWarnings] : undefined,
+    };
+    await this.decisions.record({
+      action: `publish.${platform}.skipped`, storySlug: ctx.bundle.id, platform, reason, result, runId,
+    });
+    return result;
+  }
+
+  /** Multi-part publishes (IG split) emit one entry per part so dispatch + stats
+   *  see them individually; single-shot publishes emit one combined entry. */
+  private async recordDecisionEntries(
+    decorated: PublishResult,
+    platform: Platform,
+    ctx: PublishContext,
+    runId: string,
+    reason: string,
+  ): Promise<void> {
+    if (decorated.parts?.length) {
       for (const part of decorated.parts) {
         await this.decisions.record({
           action: `publish.${platform}.part${part.partIndex ?? 0}`,
-          storySlug: ctx.bundle.id,
-          platform,
-          reason: opts.reason ?? 'scheduled daily publication',
-          result: part,
-          runId,
+          storySlug: ctx.bundle.id, platform, reason, result: part, runId,
         });
       }
-    } else {
-      await this.decisions.record({
-        action: `publish.${platform}`,
-        storySlug: ctx.bundle.id,
-        platform,
-        reason: opts.reason ?? 'scheduled daily publication',
-        result: decorated,
-        runId,
-      });
+      return;
     }
-
-    return decorated;
+    await this.decisions.record({
+      action: `publish.${platform}`, storySlug: ctx.bundle.id, platform, reason, result: decorated, runId,
+    });
   }
 
   private async publishWithRetry(publisher: PlatformPublisher, ctx: PublishContext): Promise<PublishResult> {
@@ -325,6 +337,20 @@ export class Orchestrator {
       return { ok: false, error: msg };
     }
   }
+}
+
+/** Default reason recorded in the decision log when the caller did not supply one.
+ *  Kept as a constant so dispatch/cron output stays consistent and greppable. */
+const DEFAULT_PUBLISH_REASON = 'scheduled daily publication';
+
+/** Layer caption status + base warnings on top of the publisher's PublishResult.
+ *  Pure helper so it stays trivially testable and the publish flow reads top-down. */
+function decorateResult(result: PublishResult, captionStatus: CaptionStatus, baseWarnings: string[]): PublishResult {
+  return {
+    ...result,
+    captionStatus: result.captionStatus ?? captionStatus,
+    warnings: mergeWarnings(result.warnings, baseWarnings),
+  };
 }
 
 function mergeWarnings(a?: string[], b?: string[]): string[] | undefined {
