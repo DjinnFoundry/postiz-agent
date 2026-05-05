@@ -74,7 +74,7 @@ Every command accepts `--help` with examples. Commands that emit JSON also accep
 
 ## Flag conventions
 
-- `--slug` is the basename of the AudioKids output files (e.g. `dragon-marcos` for `dragon-marcos.mp3` + `dragon-marcos.json`). Never fabricate one.
+- `--slug` is the basename of the AudioKids story. For v2 layout (current), it's the directory name (e.g. `mati-museo-estrellas-2026-04-26T15-34-00-123Z` for `output/mati-museo-estrellas-…/story.json`). For v1 layout (legacy), it's the basename without extension (e.g. `dragon-marcos` for `dragon-marcos.json` + `dragon-marcos.mp3`). Slugs may contain uppercase letters, digits, and hyphens — never fabricate one, always use what's on disk.
 - `--platforms` is comma-separated: `x,tiktok,instagram,youtube,spotify`. `spotify` is a valid target but produces no per-story output — it relies on the RSS feed.
 - `--dry-run` (publish only) renders videos but skips uploads. Equivalent to running `render` except the decision log records intent.
 - `--skip-transcription` turns off whisper. Videos will have no captions. Only use if whisper is broken and you want to still get a video out, or if the audio is non-speech.

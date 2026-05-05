@@ -22,6 +22,17 @@ AudioKids (MP3 + metadata)          Postiz (X/TikTok/IG adapters)
               └─ RSS feed (for Spotify/Apple)
 ```
 
+## AudioKids output formats supported
+
+The `audiokids` adapter reads two layouts transparently per story (you can mix them in one directory):
+
+| Layout | Files                                                | When                       |
+|--------|------------------------------------------------------|----------------------------|
+| **v2** (current) | `<outputDir>/<slug>/story.json` + `<outputDir>/<slug>/<slug>.mp3` | AudioKids since 2026-04 |
+| **v1** (legacy)  | `<outputDir>/<slug>.json` + `<outputDir>/<slug>.mp3` | Older runs / fixtures   |
+
+Detection is per-candidate, so a v2 directory can sit next to a v1 flat pair without conflict. The recipient (child name + age) comes from `story.json`'s `job.childName` / `job.childAge` in v2 and from `meta.name` / `meta.age` in v1; both default to `first-name-only` consent.
+
 ## What gets published
 
 | Platform | Format | Render spec |
