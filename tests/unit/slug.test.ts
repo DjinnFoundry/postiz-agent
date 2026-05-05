@@ -34,13 +34,16 @@ describe('validateSlug', () => {
     expect(() => validateSlug('foo.bar')).toThrow(InvalidSlugError);
   });
 
-  it('rejects slugs longer than 80 characters', () => {
-    const long = 'a' + 'b'.repeat(80);
+  it('rejects slugs longer than 128 characters', () => {
+    const long = 'a' + 'b'.repeat(128);
     expect(() => validateSlug(long)).toThrow(/too long/);
   });
 
-  it('rejects uppercase letters', () => {
-    expect(() => validateSlug('Dragon-Marcos')).toThrow(InvalidSlugError);
+  it('accepts uppercase letters (AudioKids v2 slugs embed an ISO timestamp with T and Z)', () => {
+    expect(validateSlug('mati-museo-estrellas-2026-04-26T15-34-00-123Z')).toBe(
+      'mati-museo-estrellas-2026-04-26T15-34-00-123Z',
+    );
+    expect(validateSlug('Dragon-Marcos')).toBe('Dragon-Marcos');
   });
 
   it('rejects unicode characters', () => {
