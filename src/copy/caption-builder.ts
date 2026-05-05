@@ -138,17 +138,29 @@ interface CommonFields {
   partSuffix: string;
 }
 
+/** Build the `#tag1 #tag2 …` line every builder appends, with a per-platform
+ *  cap. IG / YouTube use the full set; TikTok and X cap to 4 / 2 to keep the
+ *  caption readable inside their length constraints. */
+function formatHashtagLine(hashtags: string[], limit: number = Number.POSITIVE_INFINITY): string {
+  return hashtags.slice(0, limit).map(h => `#${h}`).join(' ');
+}
+
+/** Quote the title and append the IG-style "· Parte i de N" suffix when present. */
+function quotedTitle(title: string, partSuffix: string): string {
+  return `"${title}"${partSuffix}`;
+}
+
 function buildInstagram(f: CommonFields & { teaser: string }): string {
   const dedication = f.tagline ? `Un audiocuento a medida para ${f.tagline}.` : 'Un audiocuento hecho a medida.';
   const lines = [
-    `🎧 "${f.title}"${f.partSuffix}`,
+    `🎧 ${quotedTitle(f.title, f.partSuffix)}`,
     dedication,
     f.teaser ? '' : undefined,
     f.teaser || undefined,
     f.cta ? '' : undefined,
     f.cta || undefined,
     '',
-    f.hashtags.map(h => `#${h}`).join(' '),
+    formatHashtagLine(f.hashtags),
   ].filter((l): l is string => l !== undefined);
   return lines.join('\n');
 }
@@ -156,27 +168,24 @@ function buildInstagram(f: CommonFields & { teaser: string }): string {
 function buildTikTok(f: CommonFields): string {
   const dedication = f.tagline ? `Para ${f.tagline}` : 'Hecho a medida';
   const parts = [
-    `"${f.title}"${f.partSuffix}`,
+    quotedTitle(f.title, f.partSuffix),
     dedication,
     f.cta,
   ].filter(Boolean);
-  const hashtagLine = f.hashtags.slice(0, 4).map(h => `#${h}`).join(' ');
-  return `${parts.join(' · ')} 🎧 ${hashtagLine}`;
+  return `${parts.join(' · ')} 🎧 ${formatHashtagLine(f.hashtags, 4)}`;
 }
 
 function buildX(f: CommonFields): string {
   const dedication = f.tagline ? ` · para ${f.tagline}` : '';
-  const hashtagLine = f.hashtags.slice(0, 2).map(h => `#${h}`).join(' ');
-  const base = `"${f.title}"${f.partSuffix}${dedication}`;
+  const hashtagLine = formatHashtagLine(f.hashtags, 2);
+  const base = `${quotedTitle(f.title, f.partSuffix)}${dedication}`;
   // Greedy trim: keep title, add cta only if it still fits.
   const withCta = `${base} · ${f.cta} ${hashtagLine}`.trim();
   if (withCta.length <= LENGTH_CAP.x) return withCta;
-  const withoutCta = `${base} ${hashtagLine}`.trim();
-  return withoutCta;
+  return `${base} ${hashtagLine}`.trim();
 }
 
 function buildYoutube(f: { bundle: ContentBundle; title: string; tagline: string | null; cta: string; hashtags: string[]; brandName: string }): string {
-  const title = f.title;
   const teaser = redactName(extractTeaser(f.bundle.text.body, { maxChars: 500 }), f.bundle.recipient);
   const mood = f.bundle.theme?.mood ?? 'cuento';
   const forWhom = f.tagline ? `para ${f.tagline}` : 'hecho a medida';
@@ -184,9 +193,8 @@ function buildYoutube(f: { bundle: ContentBundle; title: string; tagline: string
   const durationLine = duration != null ? ` · Duración: ~${duration} min` : '';
   const vocabList = getVocabularioNuevo(f.bundle);
   const vocab = vocabList?.length ? `\nVocabulario nuevo: ${vocabList.join(', ')}` : '';
-  const hashtagLine = f.hashtags.map(h => `#${h}`).join(' ');
   return [
-    `"${title}"`,
+    `"${f.title}"`,
     '',
     teaser,
     '',
@@ -195,7 +203,7 @@ function buildYoutube(f: { bundle: ContentBundle; title: string; tagline: string
     '',
     f.cta,
     '',
-    hashtagLine,
+    formatHashtagLine(f.hashtags),
   ].filter(Boolean).join('\n');
 }
 
