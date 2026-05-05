@@ -1,6 +1,7 @@
 import type { Command } from 'commander';
 import { buildTenantBundle } from '../tenant-context.js';
 import { printJsonPretty } from '../io.js';
+import { CliError } from '../errors.js';
 
 /**
  * `integrations`: list connected Postiz accounts (X, TikTok, IG, YouTube).
@@ -26,8 +27,7 @@ export function register(program: Command): void {
           }
         }
       } catch (err) {
-        console.error(`Could not reach Postiz at ${ctx.tenant.postiz.apiUrl}: ${err instanceof Error ? err.message : err}`);
-        process.exit(1);
+        throw new CliError(`Could not reach Postiz at ${ctx.tenant.postiz.apiUrl}: ${err instanceof Error ? err.message : err}`);
       }
     });
 }

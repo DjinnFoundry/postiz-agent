@@ -90,7 +90,7 @@ describe('Orchestrator runId propagation', () => {
     });
 
     const report = await orch.publish({
-      storySlug: 'test-slug',
+      id: 'test-slug',
       platforms: ['instagram', 'tiktok'],
       skipTranscription: true,
       force: true,
@@ -117,14 +117,14 @@ describe('Orchestrator runId propagation', () => {
     });
 
     const r1 = await orch.publish({
-      storySlug: 'test-slug',
+      id: 'test-slug',
       platforms: ['tiktok'],
       skipTranscription: true,
       force: true,
       dryRun: false,
     });
     const r2 = await orch.publish({
-      storySlug: 'test-slug',
+      id: 'test-slug',
       platforms: ['tiktok'],
       skipTranscription: true,
       force: true,

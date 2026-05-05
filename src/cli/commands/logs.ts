@@ -4,6 +4,7 @@ import type { Command } from 'commander';
 import { config } from '../../config.js';
 import { pruneRenderLogs } from '../housekeeping.js';
 import { printJson } from '../io.js';
+import { CliError } from '../errors.js';
 
 /**
  * `logs`: inspect captured render stderr from data/render-logs (written
@@ -53,8 +54,7 @@ Examples:
     .action(async (opts: { olderThanDays?: string; dryRun?: boolean; json?: boolean }) => {
       const days = opts.olderThanDays ? Number.parseInt(opts.olderThanDays, 10) : undefined;
       if (days !== undefined && (!Number.isFinite(days) || days < 0)) {
-        console.error(`invalid --older-than-days value: ${opts.olderThanDays}`);
-        process.exit(1);
+        throw new CliError(`invalid --older-than-days value: ${opts.olderThanDays}`);
       }
       const result = await pruneRenderLogs({ olderThanDays: days, dryRun: opts.dryRun });
       if (opts.json) {

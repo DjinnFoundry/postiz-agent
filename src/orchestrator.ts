@@ -21,13 +21,13 @@ import { platformOrigin } from './platforms/base.js';
 import type { CaptionStatus, Platform, PublishResult, WordEntry } from './types.js';
 
 export interface PublishOptions {
-  /** Preferred: id of the bundle within the chosen adapter. Same value as the legacy `storySlug`. */
+  /** Id of the bundle within the chosen adapter. The CLI's `--slug` flag is
+   *  resolved into this same field upstream so callers (CLI, daemon, tests)
+   *  speak one canonical name; `--slug` lives only at the user-facing layer. */
   id?: string;
-  /** Legacy alias for `id`. Kept for back-compat with the AudioKids-era CLI flag. */
-  storySlug?: string;
   /** Which adapter to load the bundle from. Default 'audiokids'. Ignored when `bundle` is supplied. */
   adapter?: string;
-  /** Inline bundle, bypasses the adapter entirely. Mutually exclusive with id/storySlug. */
+  /** Inline bundle, bypasses the adapter entirely. Mutually exclusive with id. */
   bundle?: ContentBundle;
 
   platforms: Platform[];
@@ -153,22 +153,21 @@ export class Orchestrator {
   /**
    * Pick the bundle for this publish call. Priority:
    *  1. Inline `bundle` (validated against ContentBundleSchema).
-   *  2. `id` / `storySlug` resolved through the named adapter (default 'audiokids').
+   *  2. `id` resolved through the named adapter (default 'audiokids').
    * Throws when neither is present, or both are.
    */
   private resolveBundle(opts: PublishOptions): ContentBundle {
-    const id = opts.id ?? opts.storySlug;
-    if (opts.bundle && id) {
-      throw new Error('publish: pass either bundle (inline) or id/storySlug, not both');
+    if (opts.bundle && opts.id) {
+      throw new Error('publish: pass either bundle (inline) or id, not both');
     }
     if (opts.bundle) {
       return ContentBundleSchema.parse(opts.bundle);
     }
-    if (!id) {
-      throw new Error('publish: one of bundle, id, or storySlug is required');
+    if (!opts.id) {
+      throw new Error('publish: one of bundle or id is required');
     }
     const adapterName = opts.adapter ?? DEFAULT_ADAPTER;
-    return this.adapters.get(adapterName).loadBundle(id);
+    return this.adapters.get(adapterName).loadBundle(opts.id);
   }
 
   private async publishPlatform(

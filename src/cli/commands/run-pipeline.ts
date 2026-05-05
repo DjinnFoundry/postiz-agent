@@ -7,6 +7,7 @@ import { createDefaultRegistry } from '../../tools/index.js';
 import { consoleLogger, silentLogger } from '../../core/tool.js';
 import { resolveBundle } from '../runner.js';
 import { printJson, printJsonPretty } from '../io.js';
+import { CliError } from '../errors.js';
 
 /**
  * `run-pipeline`: execute a declarative pipeline (JSON spec) against a bundle.
@@ -28,8 +29,7 @@ export function register(program: Command): void {
       id?: string; bundleFile?: string; workDir?: string; dryRun?: boolean; json?: boolean; stream?: boolean;
     }) => {
       if (!existsSync(specPath)) {
-        console.error(`pipeline spec not found: ${specPath}`);
-        process.exit(1);
+        throw new CliError(`pipeline spec not found: ${specPath}`);
       }
       const raw = JSON.parse(readFileSync(specPath, 'utf-8'));
       const spec: PipelineSpec = PipelineSpecSchema.parse(raw);

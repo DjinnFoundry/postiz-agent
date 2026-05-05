@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
+import { CliError } from './cli/errors.js';
 
 import { register as registerPublish } from './cli/commands/publish.js';
 import { register as registerRender } from './cli/commands/render.js';
@@ -92,6 +93,10 @@ registerThemes(program);
 registerGallery(program);
 
 program.parseAsync(process.argv).catch(err => {
+  if (err instanceof CliError) {
+    console.error(err.message);
+    process.exit(err.exitCode);
+  }
   console.error(err instanceof Error ? err.message : err);
   process.exit(1);
 });

@@ -8,6 +8,7 @@ import {
   formatCheckDecisions,
 } from '../themes.js';
 import { printJson, printJsonPretty } from '../io.js';
+import { CliError } from '../errors.js';
 
 /**
  * `themes`: inspect the treatment catalog used by the theme engine.
@@ -41,8 +42,7 @@ export function register(program: Command): void {
     .action((id: string, opts: { json?: boolean }) => {
       const desc = describeTheme(id);
       if (!desc.ok) {
-        console.error(`unknown treatment: ${id}. Available: ${desc.knownIds.join(', ')}`);
-        process.exit(1);
+        throw new CliError(`unknown treatment: ${id}. Available: ${desc.knownIds.join(', ')}`);
       }
       if (opts.json) printJsonPretty(desc);
       else console.log(formatThemeDescription(desc));

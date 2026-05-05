@@ -2,6 +2,7 @@ import type { Command } from 'commander';
 import { createInboxRegistry } from '../../inbox/registry.js';
 import type { Platform } from '../../types.js';
 import { printJson, printJsonPretty } from '../io.js';
+import { CliError } from '../errors.js';
 
 /**
  * `inbox`: read incoming replies/comments/mentions and post responses. The
@@ -27,8 +28,7 @@ export function register(program: Command): void {
       const platform = opts.platform as Platform;
       const provider = registry.get(platform);
       if (!provider) {
-        console.error(`no inbox provider for platform "${platform}". Supported: ${registry.platforms().join(', ')}`);
-        process.exit(1);
+        throw new CliError(`no inbox provider for platform "${platform}". Supported: ${registry.platforms().join(', ')}`);
       }
       const result = await provider.listPending({
         ...(opts.since ? { since: opts.since } : {}),
@@ -65,8 +65,7 @@ export function register(program: Command): void {
       const platform = opts.platform as Platform;
       const provider = registry.get(platform);
       if (!provider) {
-        console.error(`no inbox provider for platform "${platform}".`);
-        process.exit(1);
+        throw new CliError(`no inbox provider for platform "${platform}".`);
       }
       try {
         const result = await provider.postReply(opts.to, opts.text);
@@ -74,9 +73,12 @@ export function register(program: Command): void {
         else console.log(`replied: ${result.id}${result.url ? ` ${result.url}` : ''}`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
+        // Reply failure: emit the JSON envelope first for agent consumers,
+        // then throw so the top-level handler sets exit 1 and writes the
+        // human one-liner. Throwing without the printJson would lose the
+        // structured error payload.
         if (opts.json) printJson({ ok: false, error: msg });
-        else console.error(`reply failed: ${msg}`);
-        process.exit(1);
+        throw new CliError(`reply failed: ${msg}`);
       }
     });
 }

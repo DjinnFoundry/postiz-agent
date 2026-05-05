@@ -1,6 +1,7 @@
 import type { Command } from 'commander';
 import { createInterface } from 'node:readline/promises';
 import { runInit, type Prompter } from '../init.js';
+import { CliError } from '../errors.js';
 
 /**
  * `init`: onboarding wizard for a new tenant. Creates tenants/<slug>/config.json
@@ -68,8 +69,7 @@ Examples:
         },
       });
       if (!report.ok) {
-        console.error(`init failed: ${report.error}`);
-        process.exit(1);
+        throw new CliError(`init failed: ${report.error}`);
       }
     });
 }

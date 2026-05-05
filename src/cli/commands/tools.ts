@@ -7,6 +7,7 @@ import { consoleLogger, silentLogger } from '../../core/tool.js';
 import { formatToolDescribeHuman, formatToolsDocsIndex, formatToolDocs } from '../tools-docs.js';
 import { resolveBundle } from '../runner.js';
 import { printJsonPretty } from '../io.js';
+import { CliError } from '../errors.js';
 
 /**
  * `tools`: introspect and invoke individual tools the way an external agent
@@ -48,8 +49,7 @@ export function register(program: Command): void {
     .action((name: string, opts: { json?: boolean }) => {
       const registry = createDefaultRegistry();
       if (!registry.has(name)) {
-        console.error(`unknown tool: ${name}. Available: ${registry.names().join(', ')}`);
-        process.exit(1);
+        throw new CliError(`unknown tool: ${name}. Available: ${registry.names().join(', ')}`);
       }
       const [descriptor] = registry.list().filter(d => d.name === name);
       if (opts.json) {
@@ -71,8 +71,7 @@ export function register(program: Command): void {
         return;
       }
       if (!registry.has(name)) {
-        console.error(`unknown tool: ${name}. Available: ${registry.names().join(', ')}`);
-        process.exit(1);
+        throw new CliError(`unknown tool: ${name}. Available: ${registry.names().join(', ')}`);
       }
       const descriptor = descriptors.find(d => d.name === name)!;
       process.stdout.write(formatToolDocs(descriptor) + '\n');
@@ -94,8 +93,7 @@ export function register(program: Command): void {
     }) => {
       const registry = createDefaultRegistry();
       if (!registry.has(name)) {
-        console.error(`unknown tool: ${name}. Available: ${registry.names().join(', ')}`);
-        process.exit(1);
+        throw new CliError(`unknown tool: ${name}. Available: ${registry.names().join(', ')}`);
       }
       const bundle = resolveBundle(opts);
       const workDir = opts.workDir?.trim() || join(config.paths.tmpDir, bundle.id);
@@ -105,8 +103,7 @@ export function register(program: Command): void {
       const rawInput = { ...args, bundle, workDir, dryRun: opts.dryRun };
       const parsed = tool.inputSchema.safeParse(rawInput);
       if (!parsed.success) {
-        console.error(`input validation failed for "${name}": ${parsed.error.message}`);
-        process.exit(1);
+        throw new CliError(`input validation failed for "${name}": ${parsed.error.message}`);
       }
       const ctx = {
         bundle,
@@ -128,8 +125,11 @@ export function register(program: Command): void {
         printJsonPretty({ ok: true, output: out });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
+        // Tool failure: emit the JSON envelope first so agent consumers parsing
+        // stdout get the structured error, then throw so the top-level handler
+        // sets exit 1. Throwing without the printJson would lose the payload.
         printJsonPretty({ ok: false, error: msg });
-        process.exit(1);
+        throw new CliError(`tool ${name} failed`);
       }
     });
 }

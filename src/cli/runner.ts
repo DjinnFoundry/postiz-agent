@@ -28,10 +28,13 @@ export function parsePlatforms(csv: string): Platform[] {
  * Decide where the bundle for publish/render comes from. Mutually exclusive:
  *   1. --bundle-file <path>  inline ContentBundle JSON, no adapter involved
  *   2. --slug / --id <id>    resolved by the chosen adapter (default 'audiokids')
- * Throws when both or neither are present.
+ *
+ * `--slug` and `--id` are aliases at the CLI surface; both collapse to the
+ * single canonical `id` field that PublishOptions exposes downstream.
+ * Throws when both bundle source flags are present, or neither.
  */
 export function resolvePublishSource(opts: { slug?: string; id?: string; adapter?: string; bundleFile?: string }):
-  { id?: string; storySlug?: string; adapter?: string; bundle?: ContentBundle } {
+  { id?: string; adapter?: string; bundle?: ContentBundle } {
   const id = opts.id ?? opts.slug;
   if (opts.bundleFile && id) {
     throw new Error('pass either --slug/--id or --bundle-file, not both');

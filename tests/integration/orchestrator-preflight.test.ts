@@ -94,7 +94,7 @@ describe('Orchestrator preflight short-circuit', () => {
     });
 
     const report = await orch.publish({
-      storySlug: 'test-slug',
+      id: 'test-slug',
       platforms: ['tiktok'],
       skipTranscription: true,
       force: true,
@@ -147,7 +147,7 @@ describe('Orchestrator preflight short-circuit', () => {
     });
 
     const report = await orch.publish({
-      storySlug: 'test-slug',
+      id: 'test-slug',
       platforms: ['spotify'],
       skipTranscription: true,
       force: true,
@@ -187,7 +187,7 @@ describe('Orchestrator preflight short-circuit', () => {
     });
 
     const report = await orch.publish({
-      storySlug: 'test-slug',
+      id: 'test-slug',
       platforms: ['tiktok'],
       skipTranscription: true,
       force: true,
@@ -229,7 +229,7 @@ describe('Orchestrator preflight short-circuit', () => {
     });
 
     const report = await orch.publish({
-      storySlug: 'test-slug',
+      id: 'test-slug',
       platforms: ['tiktok', 'x'],
       skipTranscription: true,
       force: true,
@@ -274,7 +274,7 @@ describe('Orchestrator preflight short-circuit', () => {
     });
 
     const report = await orch.publish({
-      storySlug: 'test-slug',
+      id: 'test-slug',
       platforms: ['tiktok'],
       skipTranscription: true,
       force: true,

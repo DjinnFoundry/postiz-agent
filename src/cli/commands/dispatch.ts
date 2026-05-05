@@ -7,6 +7,7 @@ import { brandFromTenant } from '../../copy/brand.js';
 import { DEFAULT_ADAPTER } from '../../adapters/registry.js';
 import { parsePlatforms } from '../runner.js';
 import { printJson } from '../io.js';
+import { CliError } from '../errors.js';
 
 /**
  * `dispatch`: cron entry point. Walks the chosen adapter, consults the
@@ -44,8 +45,7 @@ Examples:
       const ctx = buildTenantBundle(opts.tenant);
       const log = ctx.decisions.list();
       if (!ctx.adapters.has(opts.adapter)) {
-        console.error(`unknown adapter "${opts.adapter}". Known: ${ctx.adapters.names().join(', ')}`);
-        process.exit(1);
+        throw new CliError(`unknown adapter "${opts.adapter}". Known: ${ctx.adapters.names().join(', ')}`);
       }
       const adapter = ctx.adapters.get(opts.adapter);
       const candidates = adapter.listCandidates().map(c => ({ slug: c.id, generatedAtMs: c.generatedAtMs }));

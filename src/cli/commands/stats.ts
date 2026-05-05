@@ -3,6 +3,7 @@ import { runStats, formatStatsReport } from '../stats.js';
 import { buildTenantBundle } from '../tenant-context.js';
 import { PlatformSchema } from '../../types.js';
 import { printJsonOrHuman } from '../io.js';
+import { CliError } from '../errors.js';
 
 /**
  * `stats`: rollup of the decision log over a window. Per-platform success
@@ -23,8 +24,7 @@ Read-only digest for a quick operational pulse. Always exits 0.
     .action(async (opts: { tenant: string; days?: string; platform?: string; json?: boolean }) => {
       const days = opts.days ? Number.parseInt(opts.days, 10) : 30;
       if (!Number.isFinite(days) || days <= 0) {
-        console.error(`invalid --days value: ${opts.days}`);
-        process.exit(1);
+        throw new CliError(`invalid --days value: ${opts.days}`);
       }
       const platform = opts.platform ? PlatformSchema.parse(opts.platform) : undefined;
       const ctx = buildTenantBundle(opts.tenant);

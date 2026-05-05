@@ -3,6 +3,7 @@ import { runCtaAb, formatCtaAbReport } from '../cta-ab.js';
 import { buildTenantBundle } from '../tenant-context.js';
 import { PlatformSchema } from '../../types.js';
 import { printJsonOrHuman } from '../io.js';
+import { CliError } from '../errors.js';
 
 /**
  * `cta-ab`: zoom into CTA variant performance. Per variant: uses, success rate,
@@ -32,8 +33,7 @@ a warning; malformed JSONL lines are skipped, remaining lines still process.
     .action(async (opts: { tenant: string; days?: string; platform?: string; json?: boolean; ingest?: string }) => {
       const days = opts.days ? Number.parseInt(opts.days, 10) : 30;
       if (!Number.isFinite(days) || days <= 0) {
-        console.error(`invalid --days value: ${opts.days}`);
-        process.exit(1);
+        throw new CliError(`invalid --days value: ${opts.days}`);
       }
       const platform = opts.platform ? PlatformSchema.parse(opts.platform) : undefined;
       const ctx = buildTenantBundle(opts.tenant);
