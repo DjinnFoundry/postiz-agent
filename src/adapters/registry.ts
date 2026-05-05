@@ -91,7 +91,7 @@ export function createDefaultRegistry(opts: CreateRegistryOptions = {}): Adapter
  */
 class AudioKidsBundleAdapter implements BundleAdapter {
   readonly name = 'audiokids';
-  readonly description = 'Reads <slug>.json + <slug>.mp3 stories from AUDIOKIDS_OUTPUT_DIR. Produces audio-story bundles.';
+  readonly description = 'Reads AudioKids stories from AUDIOKIDS_OUTPUT_DIR. Supports both layouts: v1 flat (<slug>.json + <slug>.mp3) and v2 subdir (<slug>/story.json + <slug>/<slug>.mp3). Produces audio-story bundles.';
   private readonly inner: AudioKidsAdapter;
 
   constructor(outputDir?: string) {

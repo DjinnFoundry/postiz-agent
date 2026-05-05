@@ -1,5 +1,3 @@
-import { readdirSync, statSync, readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
 import type { DecisionLogEntry, Platform, PublishResult } from './types.js';
 
 export interface DispatchCandidate {
@@ -164,31 +162,3 @@ export function selectNextStory(
   return null;
 }
 
-/**
- * Walk the AudioKids output dir for *.json + *.mp3 pairs. Returns one candidate
- * per complete pair with the best-available generation timestamp.
- */
-export function listCandidates(audiokidsDir: string): DispatchCandidate[] {
-  if (!existsSync(audiokidsDir)) return [];
-  const files = readdirSync(audiokidsDir).filter(f => f.endsWith('.json') && !f.startsWith('.'));
-  const out: DispatchCandidate[] = [];
-  for (const jsonFile of files) {
-    const slug = jsonFile.replace(/\.json$/, '');
-    const mp3Path = join(audiokidsDir, `${slug}.mp3`);
-    if (!existsSync(mp3Path)) continue;
-    const jsonPath = join(audiokidsDir, jsonFile);
-    let generatedAtMs = statSync(jsonPath).mtimeMs;
-    try {
-      const raw = JSON.parse(readFileSync(jsonPath, 'utf-8')) as { meta?: { generatedAt?: string } };
-      const ga = raw?.meta?.generatedAt;
-      if (ga) {
-        const parsed = Date.parse(ga);
-        if (Number.isFinite(parsed)) generatedAtMs = parsed;
-      }
-    } catch {
-      // non-fatal; rely on mtime
-    }
-    out.push({ slug, generatedAtMs });
-  }
-  return out;
-}

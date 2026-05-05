@@ -1,0 +1,65 @@
+{
+  "slug": "mati-museo-sample-2026-05-01T10-00-00-000Z",
+  "job": {
+    "storyId": "oneoff_mati-museo-sample",
+    "userId": null,
+    "childName": "Mati",
+    "childAge": 8,
+    "childGender": "girl",
+    "locale": "es-ES",
+    "mood": "aventura",
+    "genre": "fantasia",
+    "contentFormat": "narrative",
+    "narratorVoiceId": "Miguel",
+    "targetDurationMin": 5,
+    "targetDepthLevel": 2,
+    "childInterests": ["museos", "astronomía"],
+    "hobbies": ["lectura"],
+    "homeCity": "Madrid",
+    "ttsProvider": "inworld"
+  },
+  "story": {
+    "title": "La estrella que no quería esconderse",
+    "content": "Mati apretó la nariz contra el cristal del Planetario de Madrid. La ciudad brillaba con sus luces. Pero arriba, en el cielo oscuro, algo faltaba. Mati lo sabía. Tenía una memoria perfecta para las estrellas. Y esta noche, Sirio no estaba.",
+    "vocabulary": ["constelación", "rotación", "sureste"],
+    "beats": [
+      {
+        "t_ms": 0,
+        "type": "intro",
+        "leitmotif": "celesta-magic",
+        "ambience": "city-night",
+        "intensity": "low",
+        "anchorWord": "vez",
+        "delivery": { "style": "narrador cálido", "pace": "pausado", "emotion": "asombro" },
+        "sceneTags": ["planetario", "noche"]
+      },
+      {
+        "t_ms": 8000,
+        "type": "character",
+        "ambience": "planetarium-interior",
+        "intensity": "low",
+        "anchorWord": "nariz",
+        "delivery": { "style": "cercano", "pace": "lento", "emotion": "ternura" },
+        "sceneTags": ["mati", "ventana"]
+      }
+    ],
+    "chapters": [
+      {
+        "chapterIndex": 1,
+        "title": "La estrella que no quería esconderse",
+        "summary": "Mati descubre que Sirio ha desaparecido del cielo y resuelve el misterio.",
+        "targetDurationMin": 5
+      }
+    ],
+    "assessmentQuestions": [
+      {
+        "questionIndex": 1,
+        "kind": "literal",
+        "prompt": "¿Dónde estaba Mati?",
+        "answerOptions": ["Casa", "Planetario", "Museo"],
+        "correctOptionIndex": 1
+      }
+    ],
+    "usage": { "promptTokens": 1000, "completionTokens": 2000 }
+  }
+}

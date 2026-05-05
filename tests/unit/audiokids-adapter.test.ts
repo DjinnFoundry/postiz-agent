@@ -191,6 +191,169 @@ describe('AudioKidsAdapter.listCandidates', () => {
   });
 });
 
+const FIXTURE_DIR_V2 = resolve(__dirname, '../fixtures/audiokids-output-v2');
+const V2_SLUG = 'mati-museo-sample-2026-05-01T10-00-00-000Z';
+
+describe('AudioKidsAdapter.loadBundle (v2 subdir layout)', () => {
+  const adapter = new AudioKidsAdapter(FIXTURE_DIR_V2);
+
+  it('produces a schema-valid ContentBundle from the v2 layout', () => {
+    const bundle = adapter.loadBundle(V2_SLUG);
+    expect(() => ContentBundleSchema.parse(bundle)).not.toThrow();
+  });
+
+  it('maps v2 story.{title,content} into bundle.text and job.{locale,mood} into top-level fields', () => {
+    const b = adapter.loadBundle(V2_SLUG);
+    expect(b.id).toBe(V2_SLUG);
+    expect(b.kind).toBe('audio-story');
+    expect(b.text.title).toBe('La estrella que no quería esconderse');
+    expect(b.text.body).toMatch(/Mati apretó la nariz contra el cristal/);
+    expect(b.locale).toBe('es-ES');
+    expect(b.theme?.mood).toBe('aventura');
+    expect(b.primaryMedia).toMatch(new RegExp(`${V2_SLUG}\\.mp3$`));
+  });
+
+  it('derives recipient from job.childName + job.childAge with first-name-only consent', () => {
+    const b = adapter.loadBundle(V2_SLUG);
+    expect(b.recipient).toBeDefined();
+    expect(b.recipient?.name).toBe('Mati');
+    expect(b.recipient?.age).toBe(8);
+    expect(b.recipient?.shareConsent).toBe('first-name-only');
+    expect(b.recipient?.interests).toContain('museos');
+  });
+
+  it('passes v2 beats through (with new anchorWord/delivery fields tolerated)', () => {
+    const b = adapter.loadBundle(V2_SLUG);
+    expect(b.beats?.length).toBe(2);
+    expect(b.beats?.[0].type).toBe('intro');
+  });
+
+  it('derives wordCount and sentenceCount from story.content (downstream back-compat)', () => {
+    const b = adapter.loadBundle(V2_SLUG);
+    expect(typeof b.sourceMeta?.wordCount).toBe('number');
+    expect((b.sourceMeta?.wordCount as number) ?? 0).toBeGreaterThan(20);
+    expect(typeof b.sourceMeta?.sentenceCount).toBe('number');
+    expect((b.sourceMeta?.sentenceCount as number) ?? 0).toBeGreaterThanOrEqual(3);
+  });
+
+  it('preserves vocabulary as vocabularioNuevo for caption builder back-compat', () => {
+    const b = adapter.loadBundle(V2_SLUG);
+    expect(b.sourceMeta?.vocabularioNuevo).toEqual(['constelación', 'rotación', 'sureste']);
+  });
+
+  it('uses job.targetDurationMin when present for estimatedDurationMin', () => {
+    const b = adapter.loadBundle(V2_SLUG);
+    expect(b.sourceMeta?.estimatedDurationMin).toBe(5);
+  });
+
+  it('parses generatedAt back from the slug timestamp suffix', () => {
+    const b = adapter.loadBundle(V2_SLUG);
+    expect(b.sourceMeta?.generatedAt).toBe('2026-05-01T10:00:00.000Z');
+  });
+
+  it('marks sourceMeta.schemaVersion=v2 so future tools can branch on it', () => {
+    const b = adapter.loadBundle(V2_SLUG);
+    expect(b.sourceMeta?.schemaVersion).toBe('v2');
+  });
+
+  it('throws a clear error when slug does not exist in either layout', () => {
+    expect(() => adapter.loadBundle('does-not-exist')).toThrowError(/v2.*v1/s);
+  });
+
+  it('throws when v2 dir has story.json but no .mp3 inside', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'audiokids-v2-no-audio-'));
+    try {
+      const slug = 'broken-no-audio-2026-05-02T10-00-00-000Z';
+      const storyDir = join(dir, slug);
+      mkdirSync(storyDir, { recursive: true });
+      writeFileSync(join(storyDir, 'story.json'), JSON.stringify({
+        slug,
+        job: { childName: 'Lia', childAge: 6, locale: 'es-ES', mood: 'fantasia' },
+        story: { title: 'Sin audio', content: 'Texto.', vocabulary: [] },
+      }));
+      const adapter = new AudioKidsAdapter(dir);
+      expect(() => adapter.loadBundle(slug)).toThrowError(/no \.mp3 inside/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('omits recipient when v2 childName is missing or null (e.g. anonymous test stories)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'audiokids-v2-noname-'));
+    try {
+      const slug = 'anon-story-2026-05-02T11-00-00-000Z';
+      const storyDir = join(dir, slug);
+      mkdirSync(storyDir, { recursive: true });
+      writeFileSync(join(storyDir, 'story.json'), JSON.stringify({
+        slug,
+        job: { childName: null, childAge: null, locale: 'es-ES', mood: 'fantasia' },
+        story: { title: 'Anónima', content: 'Texto neutro sin destinatario.', vocabulary: [] },
+      }));
+      writeFileSync(join(storyDir, `${slug}.mp3`), Buffer.from([0x49, 0x44, 0x33]));
+      const adapter = new AudioKidsAdapter(dir);
+      const b = adapter.loadBundle(slug);
+      expect(b.recipient).toBeUndefined();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('AudioKidsAdapter.listCandidates (mixed v1 + v2)', () => {
+  it('lists v2 stories from a v2-only directory', () => {
+    const adapter = new AudioKidsAdapter(FIXTURE_DIR_V2);
+    const candidates = adapter.listCandidates();
+    expect(candidates.length).toBe(1);
+    expect(candidates[0].slug).toBe(V2_SLUG);
+    expect(candidates[0].generatedAt).toBe('2026-05-01T10:00:00.000Z');
+  });
+
+  it('lists both v1 and v2 stories from a mixed directory', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'audiokids-mixed-'));
+    try {
+      // v1 entry
+      const v1Slug = 'legacy-flat';
+      writeFileSync(join(dir, `${v1Slug}.json`), JSON.stringify({
+        titulo: 'Flat', contenido: 'Body.', vocabularioNuevo: [], mood: 'fantasia',
+        meta: {
+          slug: v1Slug, age: 5, mood: 'fantasia', locale: 'es-ES', name: 'Ana',
+          nivel: 1, model: 'test', wordCount: 1, sentenceCount: 1, estimatedDurationMin: 0.1,
+        },
+      }));
+      writeFileSync(join(dir, `${v1Slug}.mp3`), Buffer.from([0x49, 0x44, 0x33]));
+      // v2 entry
+      const v2Slug = 'subdir-2026-05-02T12-00-00-000Z';
+      const v2Dir = join(dir, v2Slug);
+      mkdirSync(v2Dir, { recursive: true });
+      writeFileSync(join(v2Dir, 'story.json'), JSON.stringify({
+        slug: v2Slug,
+        job: { childName: 'Leo', childAge: 7, locale: 'es-ES', mood: 'aventura' },
+        story: { title: 'Sub', content: 'Body.', vocabulary: [] },
+      }));
+      writeFileSync(join(v2Dir, `${v2Slug}.mp3`), Buffer.from([0x49, 0x44, 0x33]));
+
+      const adapter = new AudioKidsAdapter(dir);
+      const candidates = adapter.listCandidates();
+      const slugs = candidates.map(c => c.slug).sort();
+      expect(slugs).toEqual([v1Slug, v2Slug].sort());
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('skips v2 directories that lack story.json (e.g. an in-progress run)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'audiokids-partial-'));
+    try {
+      const slug = 'in-progress-2026-05-02T13-00-00-000Z';
+      mkdirSync(join(dir, slug, 'chunks'), { recursive: true });
+      const adapter = new AudioKidsAdapter(dir);
+      expect(adapter.listCandidates()).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('resolveTagline', () => {
   it('returns undefined when no recipient and no explicit tagline', () => {
     const b = {

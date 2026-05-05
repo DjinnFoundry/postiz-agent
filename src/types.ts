@@ -44,6 +44,74 @@ export const StorySchema = z.object({
 });
 export type Story = z.infer<typeof StorySchema>;
 
+/**
+ * StorySchemaV2: the AudioKids output format introduced in 2026-04 onwards.
+ * Each story is a directory `<outputDir>/<slug>/` containing `story.json`
+ * (matching this schema), `<slug>.mp3`, and `chunks/`. Notable shape changes
+ * vs. v1 (StorySchema):
+ *   - top-level slug
+ *   - `job` block carries the recipient + generation params (childName, age,
+ *     locale, mood, targetDurationMin, ...)
+ *   - `story.{title,content,vocabulary,beats,chapters,assessmentQuestions}`
+ *     replaces the old top-level titulo/contenido/vocabularioNuevo + meta.*
+ *
+ * Schema is intentionally permissive (`.passthrough()` and string mood) because
+ * AudioKids is an upstream we don't control; we want adapter parsing to keep
+ * working when AudioKids adds fields. The audiokids adapter is the only place
+ * that maps this schema to the neutral ContentBundle.
+ */
+export const StoryV2JobSchema = z.object({
+  childName: z.string().nullable().optional(),
+  childAge: z.number().nullable().optional(),
+  childGender: z.string().nullable().optional(),
+  locale: z.string(),
+  mood: z.string(),
+  genre: z.string().optional(),
+  targetDurationMin: z.number().optional(),
+  targetDepthLevel: z.number().optional(),
+  storyId: z.string().optional(),
+  ttsProvider: z.string().optional(),
+  childInterests: z.array(z.string()).optional(),
+  hobbies: z.array(z.string()).optional(),
+  childSkills: z.array(z.string()).optional(),
+  homeCity: z.string().nullable().optional(),
+}).passthrough();
+
+export const StoryV2BeatSchema = z.object({
+  t_ms: z.number(),
+  type: z.string(),
+  leitmotif: z.string().optional(),
+  ambience: z.string().optional(),
+  intensity: z.enum(['low', 'mid', 'high']).optional(),
+  anchorWord: z.string().optional(),
+  delivery: z.object({
+    style: z.string().optional(),
+    pace: z.string().optional(),
+    emotion: z.string().optional(),
+  }).passthrough().optional(),
+  sceneTags: z.array(z.string()).optional(),
+  sfx: z.array(z.object({
+    id: z.string(),
+    anchorWord: z.string().optional(),
+    tier: z.string().optional(),
+  }).passthrough()).optional(),
+}).passthrough();
+
+export const StorySchemaV2 = z.object({
+  slug: z.string(),
+  job: StoryV2JobSchema,
+  story: z.object({
+    title: z.string(),
+    content: z.string(),
+    vocabulary: z.array(z.string()).optional(),
+    beats: z.array(StoryV2BeatSchema).optional(),
+    chapters: z.array(z.unknown()).optional(),
+    assessmentQuestions: z.array(z.unknown()).optional(),
+    usage: z.record(z.unknown()).optional(),
+  }).passthrough(),
+}).passthrough();
+export type StoryV2 = z.infer<typeof StorySchemaV2>;
+
 export const PlatformSchema = z.enum(['x', 'tiktok', 'instagram', 'youtube', 'spotify']);
 export type Platform = z.infer<typeof PlatformSchema>;
 
