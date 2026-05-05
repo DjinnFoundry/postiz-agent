@@ -69,9 +69,25 @@ const gsapLines = emitWordColorTimeline(pages, {
 });
 
 // ─── Page blocks ─────────────────────────────────────────────────────────
+//
+// We compute every clip's start and duration on an integer-millisecond grid
+// (Math.round * 1000) and shave 1 ms off every interior duration. Reason: the
+// hyperframes linter reconstructs `clip_end = parseFloat(start) + parseFloat(duration)`
+// in IEEE-754 floats, and pairs like 28.7 + 182.84 evaluate to 211.54000000000002
+// even though both operands round cleanly to 3 decimals. That phantom 2e-12 s
+// "overlap" with the next clip's start was rejecting otherwise-valid renders
+// (mati-museo-estrellas, 5 min, ~30 pages, 2 lint errors). 1 ms of dead air
+// between pages is imperceptible and deterministically gap-safe.
+const PAGE_GAP_MS = 1;
+const pageStartMs = pages.map(p => Math.round((HEAD_SEC + p.startSec) * 1000));
 const pageBlocks = pages.map((p, i) => {
-  const startAbs = (HEAD_SEC + p.startSec).toFixed(3);
-  const dur = ((i + 1 < pages.length ? pages[i + 1].startSec : p.endSec + 0.4) - p.startSec).toFixed(3);
+  const isLast = i + 1 >= pages.length;
+  const nextStartMs = isLast
+    ? Math.round((HEAD_SEC + p.endSec + 0.4) * 1000)
+    : pageStartMs[i + 1];
+  const durMs = Math.max(0, nextStartMs - pageStartMs[i] - (isLast ? 0 : PAGE_GAP_MS));
+  const startAbs = (pageStartMs[i] / 1000).toFixed(3);
+  const dur = (durMs / 1000).toFixed(3);
   const wordSpans = p.tokens.map((tok, j) => {
     let rendered = escHtml(tok.text);
     // Drop cap only on the first word of the first page.
