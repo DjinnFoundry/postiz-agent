@@ -138,6 +138,13 @@ export class ThemeDecisionStore {
     return stale;
   }
 
+  /** Lightweight digest used by doctor/status. exists distinguishes "fresh tenant"
+   *  (no file yet, count=0 is fine) from "file unreadable" (would still report 0). */
+  summarize(): { count: number; exists: boolean } {
+    if (!existsSync(this.path)) return { count: 0, exists: false };
+    return { count: Object.keys(this.readAll()).length, exists: true };
+  }
+
   private readAll(): Record<string, ThemeDecision> {
     if (!existsSync(this.path)) return {};
     try {

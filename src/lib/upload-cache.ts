@@ -97,12 +97,16 @@ export class UploadCache {
     return stale;
   }
 
-  summarize(): { count: number; oldestUploadedAt: string | null } {
+  /** Lightweight digest used by doctor/status. `exists` distinguishes a brand-new
+   *  tenant (count=0, file absent) from a tenant whose cache happens to be empty. */
+  summarize(): { count: number; oldestUploadedAt: string | null; exists: boolean } {
+    const exists = existsSync(this.cachePath);
     const file = this.readFile();
     const stamps = Object.values(file.entries).map(e => e.uploadedAt).filter(Boolean).sort();
     return {
       count: Object.keys(file.entries).length,
       oldestUploadedAt: stamps[0] ?? null,
+      exists,
     };
   }
 

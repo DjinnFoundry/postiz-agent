@@ -1,12 +1,11 @@
-import { existsSync, readFileSync, accessSync, constants } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, accessSync, constants } from 'node:fs';
 import { DecisionLog } from '../decisions/log.js';
 import { findStuckSlugs } from '../dispatch.js';
 import { PostizClient, type PostizIntegration } from '../platforms/postiz.js';
 import { config } from '../config.js';
 import { run } from '../lib/process.js';
 import { createDefaultRegistry } from '../tools/index.js';
-import { loadCatalog } from '../theme/catalog.js';
+import { loadCatalog, ThemeDecisionStore } from '../theme/catalog.js';
 import { UploadCache } from '../lib/upload-cache.js';
 import { filterPublishes, filterWindow } from './decisions-window.js';
 import type { DecisionLogEntry, Platform } from '../types.js';
@@ -67,8 +66,8 @@ export async function runStatus(input: StatusInput = {}): Promise<StatusReport> 
   const audiokidsDir = input.audiokidsDir ?? config.audiokids.outputDir;
   const postizApiKey = input.postizApiKey ?? config.postiz.apiKey;
   const listIntegrations = input.listIntegrations ?? (() => new PostizClient().listIntegrations());
-  const uploadCache = input.uploadCache ?? readUploadCacheSummary();
-  const themeDecisions = input.themeDecisions ?? readThemeDecisionsSummary();
+  const uploadCache = input.uploadCache ?? new UploadCache().summarize();
+  const themeDecisions = input.themeDecisions ?? new ThemeDecisionStore().summarize();
   const toolNames = input.toolNames ?? createDefaultRegistry().names();
   const treatmentIds = input.treatmentIds ?? loadCatalog().treatments.map(t => t.id);
   const binChecks = input.binChecks ?? defaultBinChecks;
@@ -215,24 +214,6 @@ async function buildPostizDepChecks(
   }
 
   return out;
-}
-
-function readUploadCacheSummary(): { count: number; oldestUploadedAt: string | null; exists: boolean } {
-  const path = resolve(config.paths.projectRoot, 'data', 'upload-cache.json');
-  const exists = existsSync(path);
-  const { count, oldestUploadedAt } = new UploadCache().summarize();
-  return { count, oldestUploadedAt, exists };
-}
-
-function readThemeDecisionsSummary(): { count: number; exists: boolean } {
-  const path = resolve(config.paths.projectRoot, 'data', 'theme-decisions.json');
-  if (!existsSync(path)) return { count: 0, exists: false };
-  try {
-    const raw = JSON.parse(readFileSync(path, 'utf-8')) as { decisions?: Record<string, unknown> };
-    return { count: Object.keys(raw.decisions ?? {}).length, exists: true };
-  } catch {
-    return { count: 0, exists: true };
-  }
 }
 
 export function formatStatusReport(report: StatusReport, mode: 'human' | 'json'): string {

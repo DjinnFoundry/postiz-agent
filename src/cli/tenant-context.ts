@@ -19,6 +19,13 @@ export interface TenantBundle {
   postiz: () => PostizClient;
   /** Adapter registry whose audiokids adapter reads the tenant's outputDir. */
   adapters: AdapterRegistry;
+  /** Lightweight digests of the tenant's caches; consumed by doctor / status. */
+  summaries: () => TenantSummaries;
+}
+
+export interface TenantSummaries {
+  uploadCache: { count: number; oldestUploadedAt: string | null; exists: boolean };
+  themeDecisions: { count: number; exists: boolean };
 }
 
 export function buildTenantBundle(slug: string = 'default'): TenantBundle {
@@ -35,5 +42,10 @@ export function buildTenantBundle(slug: string = 'default'): TenantBundle {
     return cachedClient;
   };
 
-  return { tenant, decisions, uploadCache, themeDecisions, postiz, adapters };
+  const summaries = (): TenantSummaries => ({
+    uploadCache: uploadCache.summarize(),
+    themeDecisions: themeDecisions.summarize(),
+  });
+
+  return { tenant, decisions, uploadCache, themeDecisions, postiz, adapters, summaries };
 }

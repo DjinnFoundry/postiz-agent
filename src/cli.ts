@@ -367,17 +367,14 @@ Exit codes:
 `)
   .action(async (opts) => {
     const ctx = buildTenantBundle(opts.tenant);
-    const themeAll = ctx.themeDecisions.all();
-    const themeExists = existsSync(ctx.tenant.paths.themeDecisions);
-    const ucSummary = ctx.uploadCache.summarize();
-    const ucExists = existsSync(ctx.tenant.paths.uploadCache);
+    const summaries = ctx.summaries();
     const report = await runStatus({
       decisions: ctx.decisions.list(),
       audiokidsDir: ctx.tenant.audiokids.outputDir,
       postizApiKey: ctx.tenant.postiz.apiKey,
       listIntegrations: () => ctx.postiz().listIntegrations(),
-      uploadCache: { count: ucSummary.count, oldestUploadedAt: ucSummary.oldestUploadedAt, exists: ucExists },
-      themeDecisions: { count: Object.keys(themeAll).length, exists: themeExists },
+      uploadCache: summaries.uploadCache,
+      themeDecisions: summaries.themeDecisions,
     });
     if (opts.json) process.stdout.write(formatStatusReport(report, 'json') + '\n');
     else console.log(formatStatusReport(report, 'human'));
@@ -426,17 +423,14 @@ needs-config, needs-human) or when >0 stuck slugs are detected.
 `)
   .action(async (opts: { tenant: string; json?: boolean }) => {
     const ctx = buildTenantBundle(opts.tenant);
-    const themeAll = ctx.themeDecisions.all();
-    const themeExists = existsSync(ctx.tenant.paths.themeDecisions);
-    const ucSummary = ctx.uploadCache.summarize();
-    const ucExists = existsSync(ctx.tenant.paths.uploadCache);
+    const summaries = ctx.summaries();
     const report = await runDoctor({
       decisions: ctx.decisions.list(),
       audiokidsDir: ctx.tenant.audiokids.outputDir,
       postizApiKey: ctx.tenant.postiz.apiKey,
       listIntegrations: () => ctx.postiz().listIntegrations(),
-      uploadCache: { count: ucSummary.count, oldestUploadedAt: ucSummary.oldestUploadedAt, exists: ucExists },
-      themeDecisions: { count: Object.keys(themeAll).length, exists: themeExists },
+      uploadCache: summaries.uploadCache,
+      themeDecisions: summaries.themeDecisions,
     });
     if (opts.json) process.stdout.write(JSON.stringify(report, null, 2) + '\n');
     else console.log(formatDoctorReport(report));

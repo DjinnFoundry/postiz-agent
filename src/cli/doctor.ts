@@ -1,7 +1,8 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync } from 'node:fs';
 import { findStuckSlugs } from '../dispatch.js';
 import { DecisionLog } from '../decisions/log.js';
+import { UploadCache } from '../lib/upload-cache.js';
+import { ThemeDecisionStore } from '../theme/catalog.js';
 import { PostizClient, type PostizIntegration } from '../platforms/postiz.js';
 import { AudioKidsAdapter } from '../adapters/audiokids.js';
 import { config } from '../config.js';
@@ -51,8 +52,8 @@ export async function runDoctor(input: DoctorInput = {}): Promise<DoctorReport> 
   const audiokidsDir = input.audiokidsDir ?? config.audiokids.outputDir;
   const postizApiKey = input.postizApiKey ?? config.postiz.apiKey;
   const listIntegrations = input.listIntegrations ?? (() => new PostizClient().listIntegrations());
-  const uploadCache = input.uploadCache ?? readUploadCacheSummary();
-  const themeDecisions = input.themeDecisions ?? readThemeDecisionsSummary();
+  const uploadCache = input.uploadCache ?? new UploadCache().summarize();
+  const themeDecisions = input.themeDecisions ?? new ThemeDecisionStore().summarize();
 
   const sections: DoctorSection[] = [];
 
@@ -192,34 +193,6 @@ function buildUploadCacheSection(uc: { count: number; oldestUploadedAt: string |
 function buildThemeDecisionsSection(tm: { count: number; exists: boolean }): DoctorItem[] {
   if (!tm.exists) return [{ label: 'theme decisions: not yet created', status: 'ok' }];
   return [{ label: `theme decisions: ${tm.count} bundle(s) cached`, status: 'ok' }];
-}
-
-function readUploadCacheSummary(): { count: number; oldestUploadedAt: string | null; exists: boolean } {
-  const path = resolve(config.paths.projectRoot, 'data', 'upload-cache.json');
-  if (!existsSync(path)) return { count: 0, oldestUploadedAt: null, exists: false };
-  try {
-    const raw = JSON.parse(readFileSync(path, 'utf-8')) as { entries?: Record<string, { uploadedAt: string }> };
-    const entries = raw.entries ?? {};
-    const stamps = Object.values(entries).map(e => e.uploadedAt).filter(Boolean).sort();
-    return {
-      count: Object.keys(entries).length,
-      oldestUploadedAt: stamps[0] ?? null,
-      exists: true,
-    };
-  } catch {
-    return { count: 0, oldestUploadedAt: null, exists: true };
-  }
-}
-
-function readThemeDecisionsSummary(): { count: number; exists: boolean } {
-  const path = resolve(config.paths.projectRoot, 'data', 'theme-decisions.json');
-  if (!existsSync(path)) return { count: 0, exists: false };
-  try {
-    const raw = JSON.parse(readFileSync(path, 'utf-8')) as { decisions?: Record<string, unknown> };
-    return { count: Object.keys(raw.decisions ?? {}).length, exists: true };
-  } catch {
-    return { count: 0, exists: true };
-  }
 }
 
 // No colors so output survives tee / cron mail / webhook bodies.
