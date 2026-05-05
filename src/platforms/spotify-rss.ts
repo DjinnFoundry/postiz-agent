@@ -1,8 +1,7 @@
-import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, statSync } from 'node:fs';
 import { config } from '../config.js';
 import { probeDurationSec } from '../lib/ffprobe.js';
-import { StorySchema, type Story } from '../types.js';
+import { AudioKidsAdapter } from '../adapters/audiokids.js';
 
 export interface PodcastChannelMeta {
   title: string;
@@ -44,34 +43,38 @@ export class SpotifyRssBuilder {
 
   private async collectEpisodes(): Promise<EpisodeItem[]> {
     if (!existsSync(this.audiokidsDir)) return [];
-    const files = readdirSync(this.audiokidsDir).filter(f => f.endsWith('.json') && !f.startsWith('.'));
+    const adapter = new AudioKidsAdapter(this.audiokidsDir);
+    const candidates = adapter.listCandidates();
     const episodes: EpisodeItem[] = [];
 
-    for (const jsonFile of files) {
-      const slug = jsonFile.replace(/\.json$/, '');
-      if (this.excludeSlugs.has(slug)) continue;
-      const mp3Path = join(this.audiokidsDir, `${slug}.mp3`);
-      if (!existsSync(mp3Path)) continue;
+    for (const c of candidates) {
+      if (this.excludeSlugs.has(c.slug)) continue;
+      let bundle;
+      try {
+        bundle = adapter.loadBundle(c.slug);
+      } catch {
+        continue; // skip malformed stories without breaking the whole feed
+      }
+      if (!bundle.primaryMedia || !existsSync(bundle.primaryMedia)) continue;
 
-      const raw = JSON.parse(readFileSync(join(this.audiokidsDir, jsonFile), 'utf-8'));
-      let story: Story;
-      try { story = StorySchema.parse(raw); } catch { continue; }
+      const stat = statSync(bundle.primaryMedia);
+      const duration = await this.probeDuration(bundle.primaryMedia);
 
-      const stat = statSync(mp3Path);
-      const duration = await this.probeDuration(mp3Path);
-
-      // Prefer story.meta.generatedAt (stable across re-renders) over file mtime
-      // (unstable, would reorder feed + re-notify subscribers on any file touch).
-      const pubSource = story.meta.generatedAt
-        ? new Date(story.meta.generatedAt)
-        : new Date(statSync(join(this.audiokidsDir, jsonFile)).mtimeMs);
+      // Prefer the AudioKids-emitted generatedAt (stable across re-renders) over
+      // file mtime (unstable; would reorder the feed + re-notify subscribers on
+      // any file touch). Adapter pulls it from sourceMeta.generatedAt for both
+      // v1 (meta.generatedAt) and v2 (parsed from the slug timestamp suffix).
+      const generatedAt = bundle.sourceMeta?.generatedAt as string | undefined;
+      const pubSource = generatedAt
+        ? new Date(generatedAt)
+        : new Date(c.mtimeMs);
 
       episodes.push({
-        slug,
-        title: story.titulo,
-        description: buildTeaser(story.contenido),
-        audioUrl: `${this.publicFeedBase}/audio/${slug}.mp3`,
-        imageUrl: `${this.publicFeedBase}/covers/${slug}.png`,
+        slug: c.slug,
+        title: bundle.text.title ?? c.slug,
+        description: buildTeaser(bundle.text.body),
+        audioUrl: `${this.publicFeedBase}/audio/${c.slug}.mp3`,
+        imageUrl: `${this.publicFeedBase}/covers/${c.slug}.png`,
         durationSec: Math.round(duration),
         pubDate: pubSource.toUTCString(),
         mp3SizeBytes: stat.size,
