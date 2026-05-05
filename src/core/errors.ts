@@ -52,6 +52,36 @@ export interface ClassifiedError {
   remediation?: Remediation;
 }
 
+/**
+ * Build the canonical "publish failed" PublishResult shape from a thrown
+ * value. Three publishers used to inline the same construction in their
+ * catch blocks (orchestrator.publishWithRetry, base.VideoPublisher.publish,
+ * instagram-publisher.publishPart) — same five fields, same optional
+ * remediation spread, easy to drift apart on the next change. Centralised
+ * here so the failure shape is canonical and tests around it stay
+ * meaningful.
+ *
+ * `extras` is the publisher-specific tail (e.g. partIndex / partTotal for
+ * Instagram multi-part). The base shape always wins for the five core
+ * fields; extras add to it.
+ */
+export function buildClassifiedFailure(
+  platform: import('../types.js').Platform,
+  err: unknown,
+  opts: { origin?: ErrorOrigin; extras?: Partial<import('../types.js').PublishResult> } = {},
+): import('../types.js').PublishResult {
+  const classified = classifyError(err, opts.origin ? { origin: opts.origin } : {});
+  return {
+    platform,
+    success: false,
+    error: classified.message,
+    errorClass: classified.kind,
+    ...(classified.remediation ? { remediation: classified.remediation } : {}),
+    timestamp: new Date().toISOString(),
+    ...(opts.extras ?? {}),
+  };
+}
+
 const NETWORK_CODES = new Set([
   'ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN', 'ENETUNREACH', 'EPIPE', 'ENOTFOUND',
 ]);

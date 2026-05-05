@@ -14,7 +14,7 @@ import { wasRecentlyPublished } from './idempotency.js';
 import { moderateWords } from './media/caption-moderation.js';
 import type { ContentBundle } from './core/content-bundle.js';
 import { ContentBundleSchema, getWordCount, getEstimatedDurationMin } from './core/content-bundle.js';
-import { classifyError } from './core/errors.js';
+import { classifyError, buildClassifiedFailure } from './core/errors.js';
 import { preflightPlatform, type PreflightResult } from './core/preflight.js';
 import type { BrandContext } from './copy/brand.js';
 import { platformOrigin } from './platforms/base.js';
@@ -206,19 +206,17 @@ export class Orchestrator {
   ): Promise<PublishResult | null> {
     const pre = await this.preflight(ctx.bundle, platform);
     if (pre.ok) return null;
-    const result: PublishResult = {
+    const result = buildSkipResult({
       platform,
       success: pre.kind === 'skip',
-      skipped: true,
       reason: pre.reason,
-      timestamp: new Date().toISOString(),
       captionStatus,
-      ...(pre.kind !== 'skip' ? { errorClass: pre.kind, error: pre.reason } : {}),
+      baseWarnings,
+      ...(pre.kind !== 'skip' ? { errorClass: pre.kind, errorMessage: pre.reason } : {}),
       ...(pre.hint ? { remediation: { action: 'preflight-fix', humanHint: pre.hint } } : {}),
-      warnings: baseWarnings.length ? [...baseWarnings] : undefined,
-    };
-    await this.decisions.record({
-      action: `publish.${platform}.preflight`, storySlug: ctx.bundle.id, platform, reason, result, runId,
+    });
+    await this.recordPublishDecision({
+      action: `publish.${platform}.preflight`, platform, ctx, reason, result, runId,
     });
     console.log(`  ${platform} preflight: ${pre.reason}`);
     return result;
@@ -241,17 +239,15 @@ export class Orchestrator {
     const check = wasRecentlyPublished(history, ctx.bundle.id, platform);
     if (!check.recent) return null;
     console.log(`  ${platform} skipped: already published in the last 24h (${check.entry?.createdAt})`);
-    const result: PublishResult = {
+    const result = buildSkipResult({
       platform,
       success: true,
-      skipped: true,
       reason: 'already published today',
-      timestamp: new Date().toISOString(),
       captionStatus,
-      warnings: baseWarnings.length ? [...baseWarnings] : undefined,
-    };
-    await this.decisions.record({
-      action: `publish.${platform}.skipped`, storySlug: ctx.bundle.id, platform, reason, result, runId,
+      baseWarnings,
+    });
+    await this.recordPublishDecision({
+      action: `publish.${platform}.skipped`, platform, ctx, reason, result, runId,
     });
     return result;
   }
@@ -267,15 +263,37 @@ export class Orchestrator {
   ): Promise<void> {
     if (decorated.parts?.length) {
       for (const part of decorated.parts) {
-        await this.decisions.record({
+        await this.recordPublishDecision({
           action: `publish.${platform}.part${part.partIndex ?? 0}`,
-          storySlug: ctx.bundle.id, platform, reason, result: part, runId,
+          platform, ctx, reason, result: part, runId,
         });
       }
       return;
     }
+    await this.recordPublishDecision({
+      action: `publish.${platform}`, platform, ctx, reason, result: decorated, runId,
+    });
+  }
+
+  /** Append a single decision-log entry for a publish-related action. The
+   *  storySlug field always equals ctx.bundle.id; centralising this writer
+   *  removes the per-call repetition of the same five literals (action,
+   *  storySlug, platform, reason, result, runId). */
+  private async recordPublishDecision(input: {
+    action: string;
+    platform: Platform;
+    ctx: PublishContext;
+    reason: string;
+    result: PublishResult;
+    runId: string;
+  }): Promise<void> {
     await this.decisions.record({
-      action: `publish.${platform}`, storySlug: ctx.bundle.id, platform, reason, result: decorated, runId,
+      action: input.action,
+      storySlug: input.ctx.bundle.id,
+      platform: input.platform,
+      reason: input.reason,
+      result: input.result,
+      runId: input.runId,
     });
   }
 
@@ -307,14 +325,9 @@ export class Orchestrator {
         config.alerts?.webhookUrl || undefined,
       );
       if (lastResult) return lastResult;
-      return {
-        platform: publisher.platform,
-        success: false,
-        error: classified.message,
-        errorClass: classified.kind,
-        ...(classified.remediation ? { remediation: classified.remediation } : {}),
-        timestamp: new Date().toISOString(),
-      };
+      return buildClassifiedFailure(publisher.platform, err, {
+        origin: platformOrigin(publisher.platform),
+      });
     }
   }
 
@@ -350,6 +363,42 @@ function decorateResult(result: PublishResult, captionStatus: CaptionStatus, bas
     ...result,
     captionStatus: result.captionStatus ?? captionStatus,
     warnings: mergeWarnings(result.warnings, baseWarnings),
+  };
+}
+
+/**
+ * Build a skip-shaped PublishResult — used when preflight rejects, when the
+ * 24h idempotency guard fires, and any future "skip with logging" path. The
+ * envelope was inlined twice in publishPlatform with identical baseWarnings
+ * cloning and timestamp generation; this helper makes it impossible to drift.
+ */
+interface BuildSkipResultInput {
+  platform: Platform;
+  /** Whether the skip counts as a successful publish (preflight skip kind=skip,
+   *  idempotency skip → true) or a failure recorded as skipped (preflight reject
+   *  kinds → false). */
+  success: boolean;
+  reason: string;
+  captionStatus: CaptionStatus;
+  baseWarnings: string[];
+  /** Optional classified-error fields when the skip is in fact a soft failure. */
+  errorClass?: PublishResult['errorClass'];
+  errorMessage?: string;
+  remediation?: PublishResult['remediation'];
+}
+
+function buildSkipResult(input: BuildSkipResultInput): PublishResult {
+  return {
+    platform: input.platform,
+    success: input.success,
+    skipped: true,
+    reason: input.reason,
+    timestamp: new Date().toISOString(),
+    captionStatus: input.captionStatus,
+    ...(input.errorClass ? { errorClass: input.errorClass } : {}),
+    ...(input.errorMessage ? { error: input.errorMessage } : {}),
+    ...(input.remediation ? { remediation: input.remediation } : {}),
+    warnings: input.baseWarnings.length ? [...input.baseWarnings] : undefined,
   };
 }
 

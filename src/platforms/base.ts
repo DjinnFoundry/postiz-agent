@@ -1,6 +1,6 @@
 import { SlideVideoBuilder } from '../media/slide-video.js';
 import type { ContentBundle } from '../core/content-bundle.js';
-import { classifyError, type ErrorOrigin } from '../core/errors.js';
+import { classifyError, buildClassifiedFailure, type ErrorOrigin } from '../core/errors.js';
 import { resolveMediaForPlatform } from '../core/media-strategy.js';
 import type { BrandContext } from '../copy/brand.js';
 import type { Platform, PublishResult, WordEntry } from '../types.js';
@@ -64,14 +64,10 @@ export abstract class VideoPublisher implements PlatformPublisher {
     } catch (err) {
       const classified = classifyError(err, { origin: platformOrigin(this.platform) });
       console.error(`  ${this.platform} failed (${classified.kind}/${classified.origin}): ${classified.message}`);
-      return {
-        platform: this.platform,
-        success: false,
-        error: classified.message,
-        errorClass: classified.kind,
-        ...(classified.remediation ? { remediation: classified.remediation } : {}),
-        timestamp: ts,
-      };
+      return buildClassifiedFailure(this.platform, err, {
+        origin: platformOrigin(this.platform),
+        extras: { timestamp: ts },
+      });
     }
   }
 

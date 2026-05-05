@@ -4,7 +4,7 @@ import { PostizVideoPublisher } from './postiz-video-publisher.js';
 import { PostizClient } from './postiz.js';
 import { probeDurationSec } from '../lib/ffprobe.js';
 import { splitIntoParts, type PartSpec } from './instagram-split.js';
-import { classifyError } from '../core/errors.js';
+import { classifyError, buildClassifiedFailure } from '../core/errors.js';
 import { buildCaptionRich } from '../copy/caption-builder.js';
 import type { Platform, PublishResult } from '../types.js';
 
@@ -120,16 +120,14 @@ export class InstagramPublisher extends PostizVideoPublisher {
     } catch (err) {
       const classified = classifyError(err, { origin: 'postiz' });
       console.error(`  instagram part ${part.partIndex}/${part.partTotal} failed (${classified.kind}): ${classified.message}`);
-      return {
-        platform: this.platform,
-        success: false,
-        error: classified.message,
-        errorClass: classified.kind,
-        ...(classified.remediation ? { remediation: classified.remediation } : {}),
-        timestamp: ts,
-        partIndex: part.partIndex,
-        partTotal: part.partTotal,
-      };
+      return buildClassifiedFailure(this.platform, err, {
+        origin: 'postiz',
+        extras: {
+          timestamp: ts,
+          partIndex: part.partIndex,
+          partTotal: part.partTotal,
+        },
+      });
     }
   }
 
