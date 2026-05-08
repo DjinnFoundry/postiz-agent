@@ -1,0 +1,1165 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>postiz-agent | Infográfico de producto y arquitectura</title>
+  <style>
+    :root {
+      --paper: #f6f0e5;
+      --paper-2: #efe3d0;
+      --ink: #17212b;
+      --muted: #5b6470;
+      --line: #d8c6a6;
+      --blue: #245d7d;
+      --teal: #20786f;
+      --coral: #d9644a;
+      --gold: #c9912f;
+      --plum: #5b456d;
+      --green: #4d7a46;
+      --white: #fffaf1;
+      --shadow: 0 20px 55px rgba(26, 27, 25, 0.14);
+      --radius: 8px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: "Avenir Next", "Trebuchet MS", Verdana, sans-serif;
+      line-height: 1.5;
+      letter-spacing: 0;
+      background:
+        linear-gradient(90deg, rgba(23, 33, 43, 0.04) 1px, transparent 1px),
+        linear-gradient(0deg, rgba(23, 33, 43, 0.035) 1px, transparent 1px),
+        radial-gradient(circle at 12% 8%, rgba(217, 100, 74, 0.13), transparent 28rem),
+        radial-gradient(circle at 88% 18%, rgba(32, 120, 111, 0.12), transparent 30rem),
+        var(--paper);
+      background-size: 28px 28px, 28px 28px, auto, auto, auto;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.3;
+      mix-blend-mode: multiply;
+      background-image:
+        repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.25) 0 1px, transparent 1px 4px);
+    }
+
+    a {
+      color: inherit;
+    }
+
+    .sheet {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 64px;
+    }
+
+    .hero {
+      min-height: 620px;
+      display: grid;
+      grid-template-columns: 1.02fr 0.98fr;
+      align-items: stretch;
+      gap: 28px;
+      padding: 38px;
+      border: 1px solid rgba(23, 33, 43, 0.16);
+      border-radius: 14px;
+      background:
+        linear-gradient(135deg, rgba(255, 250, 241, 0.96), rgba(239, 227, 208, 0.92)),
+        var(--white);
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto -80px -160px auto;
+      width: 380px;
+      height: 380px;
+      border: 1px solid rgba(23, 33, 43, 0.12);
+      transform: rotate(18deg);
+      background:
+        linear-gradient(90deg, transparent 48%, rgba(36, 93, 125, 0.12) 48% 52%, transparent 52%),
+        linear-gradient(0deg, transparent 48%, rgba(36, 93, 125, 0.12) 48% 52%, transparent 52%);
+      background-size: 42px 42px;
+    }
+
+    .hero-copy {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      z-index: 1;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      width: fit-content;
+      align-items: center;
+      gap: 10px;
+      margin: 0 0 22px;
+      padding: 8px 12px;
+      border: 1px solid rgba(23, 33, 43, 0.18);
+      border-radius: 999px;
+      color: var(--blue);
+      font-size: 0.78rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0;
+      background: rgba(255, 250, 241, 0.72);
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--coral);
+      box-shadow: 14px 0 0 var(--gold), 28px 0 0 var(--teal);
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin-top: 0;
+    }
+
+    h1 {
+      margin-bottom: 18px;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 5.4rem;
+      line-height: 0.92;
+      font-weight: 700;
+      letter-spacing: 0;
+      color: var(--ink);
+    }
+
+    .lead {
+      max-width: 640px;
+      margin-bottom: 32px;
+      color: #2d3b45;
+      font-size: 1.18rem;
+    }
+
+    .signal-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-top: 22px;
+    }
+
+    .signal {
+      min-height: 120px;
+      padding: 16px;
+      border: 1px solid rgba(23, 33, 43, 0.15);
+      border-radius: var(--radius);
+      background: rgba(255, 250, 241, 0.78);
+    }
+
+    .signal strong {
+      display: block;
+      margin-bottom: 6px;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 2.2rem;
+      line-height: 1;
+      color: var(--coral);
+    }
+
+    .signal span {
+      display: block;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .hero-visual {
+      display: grid;
+      align-content: center;
+      position: relative;
+      z-index: 1;
+      padding: 24px;
+      border: 1px solid rgba(23, 33, 43, 0.14);
+      border-radius: 12px;
+      background:
+        linear-gradient(180deg, rgba(23, 33, 43, 0.92), rgba(28, 41, 52, 0.96)),
+        var(--ink);
+      color: var(--white);
+      overflow: hidden;
+    }
+
+    .hero-visual::before {
+      content: "";
+      position: absolute;
+      inset: 18px;
+      border: 1px solid rgba(255, 250, 241, 0.16);
+      pointer-events: none;
+    }
+
+    .console {
+      display: grid;
+      gap: 14px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .console-row {
+      display: grid;
+      grid-template-columns: 118px 1fr;
+      gap: 16px;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid rgba(255, 250, 241, 0.14);
+    }
+
+    .console-row:last-child {
+      border-bottom: 0;
+    }
+
+    .console-label {
+      color: rgba(255, 250, 241, 0.62);
+      font-size: 0.75rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0;
+    }
+
+    .console-value {
+      font-family: "Courier New", monospace;
+      color: #ffeec6;
+      font-size: 0.94rem;
+    }
+
+    .route {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .route span {
+      padding: 7px 10px;
+      border: 1px solid rgba(255, 250, 241, 0.18);
+      border-radius: 999px;
+      background: rgba(255, 250, 241, 0.08);
+      color: #fff6db;
+      font-size: 0.82rem;
+      font-weight: 700;
+    }
+
+    .hero-stamp {
+      position: absolute;
+      right: 26px;
+      bottom: 24px;
+      width: 122px;
+      height: 122px;
+      display: grid;
+      place-items: center;
+      border: 2px solid rgba(255, 250, 241, 0.36);
+      border-radius: 50%;
+      color: rgba(255, 250, 241, 0.82);
+      font-size: 0.72rem;
+      font-weight: 900;
+      text-align: center;
+      text-transform: uppercase;
+      transform: rotate(-12deg);
+    }
+
+    .section {
+      margin-top: 34px;
+      padding: 34px;
+      border: 1px solid rgba(23, 33, 43, 0.14);
+      border-radius: 12px;
+      background: rgba(255, 250, 241, 0.86);
+      box-shadow: 0 16px 38px rgba(26, 27, 25, 0.08);
+    }
+
+    .section-header {
+      display: grid;
+      grid-template-columns: 0.72fr 1.28fr;
+      gap: 22px;
+      align-items: end;
+      margin-bottom: 24px;
+    }
+
+    .kicker {
+      margin: 0;
+      color: var(--teal);
+      font-size: 0.78rem;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin-bottom: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 2.42rem;
+      line-height: 1.02;
+      letter-spacing: 0;
+    }
+
+    .section-header p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 1rem;
+    }
+
+    .problem-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+
+    .problem-card,
+    .feature-card,
+    .platform-card,
+    .module-card,
+    .truth-card {
+      border: 1px solid rgba(23, 33, 43, 0.14);
+      border-radius: var(--radius);
+      background: var(--white);
+    }
+
+    .problem-card {
+      padding: 18px;
+      min-height: 186px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .problem-card::after {
+      content: "";
+      position: absolute;
+      right: -28px;
+      bottom: -34px;
+      width: 118px;
+      height: 118px;
+      border: 1px solid rgba(23, 33, 43, 0.12);
+      transform: rotate(12deg);
+      background: rgba(201, 145, 47, 0.08);
+    }
+
+    .problem-card b,
+    .feature-card b,
+    .platform-card b,
+    .module-card b,
+    .truth-card b {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 1.02rem;
+      color: var(--ink);
+    }
+
+    .problem-card p,
+    .feature-card p,
+    .platform-card p,
+    .module-card p,
+    .truth-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .diagram-wrap {
+      overflow-x: auto;
+      border: 1px solid rgba(23, 33, 43, 0.12);
+      border-radius: 10px;
+      background:
+        linear-gradient(180deg, rgba(255, 250, 241, 0.96), rgba(246, 240, 229, 0.96));
+    }
+
+    .diagram-wrap svg {
+      display: block;
+      min-width: 940px;
+      width: 100%;
+      height: auto;
+    }
+
+    .two-col .diagram-wrap svg {
+      min-width: 520px;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+
+    .feature-card {
+      padding: 16px;
+      min-height: 162px;
+      background:
+        linear-gradient(180deg, rgba(255, 250, 241, 1), rgba(255, 250, 241, 0.78));
+      position: relative;
+    }
+
+    .feature-card::before {
+      content: attr(data-n);
+      display: inline-grid;
+      width: 30px;
+      height: 30px;
+      place-items: center;
+      margin-bottom: 14px;
+      border-radius: 50%;
+      background: var(--ink);
+      color: var(--white);
+      font-size: 0.78rem;
+      font-weight: 900;
+    }
+
+    .feature-card:nth-child(3n + 1)::before {
+      background: var(--blue);
+    }
+
+    .feature-card:nth-child(3n + 2)::before {
+      background: var(--coral);
+    }
+
+    .feature-card:nth-child(3n)::before {
+      background: var(--teal);
+    }
+
+    .platform-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+    }
+
+    .platform-card {
+      padding: 16px;
+      min-height: 178px;
+      border-top: 5px solid var(--blue);
+    }
+
+    .platform-card:nth-child(2) {
+      border-top-color: var(--coral);
+    }
+
+    .platform-card:nth-child(3) {
+      border-top-color: var(--teal);
+    }
+
+    .platform-card:nth-child(4) {
+      border-top-color: var(--plum);
+    }
+
+    .platform-card:nth-child(5) {
+      border-top-color: var(--gold);
+    }
+
+    .spec {
+      display: block;
+      margin: 12px 0 8px;
+      color: var(--ink);
+      font-family: "Courier New", monospace;
+      font-size: 0.86rem;
+      font-weight: 700;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+
+    .module-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+
+    .module-card {
+      padding: 16px;
+    }
+
+    .module-card code {
+      display: inline-block;
+      margin-top: 10px;
+      padding: 4px 7px;
+      border: 1px solid rgba(23, 33, 43, 0.12);
+      border-radius: 6px;
+      color: var(--blue);
+      background: rgba(36, 93, 125, 0.07);
+      font-family: "Courier New", monospace;
+      font-size: 0.8rem;
+    }
+
+    .truth-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+
+    .truth-card {
+      padding: 16px;
+      min-height: 150px;
+    }
+
+    .truth-card[data-tone="ship"] {
+      border-top: 4px solid var(--green);
+    }
+
+    .truth-card[data-tone="gap"] {
+      border-top: 4px solid var(--coral);
+    }
+
+    .note {
+      margin-top: 18px;
+      padding: 16px 18px;
+      border-left: 4px solid var(--gold);
+      background: rgba(201, 145, 47, 0.1);
+      color: #4d4639;
+      font-size: 0.94rem;
+    }
+
+    .footer {
+      margin-top: 28px;
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .footer strong {
+      color: var(--ink);
+    }
+
+    .pill-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .pill-list span {
+      display: inline-flex;
+      align-items: center;
+      min-height: 31px;
+      padding: 6px 10px;
+      border: 1px solid rgba(23, 33, 43, 0.13);
+      border-radius: 999px;
+      background: rgba(255, 250, 241, 0.76);
+      color: #38434c;
+      font-size: 0.82rem;
+      font-weight: 700;
+    }
+
+    @media (max-width: 980px) {
+      .hero,
+      .section-header,
+      .two-col {
+        grid-template-columns: 1fr;
+      }
+
+      .hero {
+        min-height: auto;
+      }
+
+      h1 {
+        font-size: 4.2rem;
+      }
+
+      .features-grid,
+      .platform-grid,
+      .truth-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .problem-grid,
+      .module-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 680px) {
+      .sheet {
+        width: min(100% - 20px, 1180px);
+        padding-top: 10px;
+      }
+
+      .hero,
+      .section {
+        padding: 22px;
+      }
+
+      h1 {
+        font-size: 3.2rem;
+      }
+
+      h2 {
+        font-size: 2rem;
+      }
+
+      .signal-row,
+      .features-grid,
+      .platform-grid,
+      .truth-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .console-row {
+        grid-template-columns: 1fr;
+      }
+
+      .diagram-wrap svg,
+      .two-col .diagram-wrap svg {
+        min-width: 0;
+      }
+
+      .footer {
+        flex-direction: column;
+      }
+    }
+
+    @media print {
+      body {
+        background: var(--paper);
+      }
+
+      body::before {
+        display: none;
+      }
+
+      .sheet {
+        width: 100%;
+        padding: 0;
+      }
+
+      .hero,
+      .section {
+        box-shadow: none;
+        break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="sheet">
+    <section class="hero" aria-labelledby="title">
+      <div class="hero-copy">
+        <div>
+          <p class="eyebrow">Autonomous social publisher</p>
+          <h1 id="title">postiz-agent</h1>
+          <p class="lead">Un motor autónomo que toma un paquete local MP3 + JSON + cover y lo convierte en videos, slides y publicaciones para X, TikTok, Instagram, YouTube y Spotify por RSS.</p>
+          <div class="pill-list" aria-label="Resumen rapido">
+            <span>MP3-first</span>
+            <span>Self-hosted Postiz</span>
+            <span>Whisper captions</span>
+            <span>HyperFrames video</span>
+            <span>JSONL memory</span>
+          </div>
+        </div>
+
+        <div class="signal-row" aria-label="Metricas del sistema">
+          <div class="signal">
+            <strong>1</strong>
+            <span>transcripción word-level reutilizada por todas las variantes de video.</span>
+          </div>
+          <div class="signal">
+            <strong>24h</strong>
+            <span>guardia de idempotencia para evitar publicaciones duplicadas.</span>
+          </div>
+          <div class="signal">
+            <strong>5</strong>
+            <span>destinos soportados: tres por Postiz, uno por YouTubeCLI y podcast RSS.</span>
+          </div>
+        </div>
+      </div>
+
+      <aside class="hero-visual" aria-label="Consola conceptual del agente">
+        <div class="console">
+          <div class="console-row">
+            <div class="console-label">Input</div>
+            <div class="console-value">slug.mp3 + slug.json + slug-cover.png</div>
+          </div>
+          <div class="console-row">
+            <div class="console-label">Core</div>
+            <div class="console-value">orchestrator.publish({ platforms })</div>
+          </div>
+          <div class="console-row">
+            <div class="console-label">Render</div>
+            <div class="console-value">HyperFrames templates, aspect ratio por plataforma</div>
+          </div>
+          <div class="console-row">
+            <div class="console-label">Salida</div>
+            <div class="route" aria-label="Destinos">
+              <span>X</span>
+              <span>TikTok</span>
+              <span>Instagram</span>
+              <span>YouTube</span>
+              <span>Spotify RSS</span>
+            </div>
+          </div>
+          <div class="console-row">
+            <div class="console-label">Memoria</div>
+            <div class="console-value">data/decisions.jsonl</div>
+          </div>
+        </div>
+        <div class="hero-stamp">Cron-safe<br>agent</div>
+      </aside>
+    </section>
+
+    <section class="section" aria-labelledby="problem">
+      <div class="section-header">
+        <div>
+          <p class="kicker">Qué problema resuelve</p>
+          <h2 id="problem">De archivo local a publicación omnicanal.</h2>
+        </div>
+        <p>Postiz publica piezas ya preparadas. Tu pipeline produce audio y metadatos. Este repo es la capa que transforma, valida, adapta por plataforma y deja trazabilidad para runs autónomos.</p>
+      </div>
+
+      <div class="problem-grid">
+        <article class="problem-card">
+          <b>Convierte audio en video social</b>
+          <p>Lee MP3, JSON y cover, genera subtítulos karaoke con Whisper y renderiza slides animados con HyperFrames.</p>
+        </article>
+        <article class="problem-card">
+          <b>Aísla las rarezas de cada plataforma</b>
+          <p>X, TikTok e Instagram usan Postiz. YouTube delega en YouTubeCLI. Spotify se alimenta con RSS porque no hay publish API por episodio.</p>
+        </article>
+        <article class="problem-card">
+          <b>Opera sin supervisar sin perder control</b>
+          <p>`dispatch` elige el siguiente item pendiente, evita duplicados, reintenta fallos transitorios y registra cada decisión en JSONL.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="contract">
+      <div class="section-header">
+        <div>
+          <p class="kicker">Contrato de entrada</p>
+          <h2 id="contract">Lo único que debe entregar cualquier proyecto.</h2>
+        </div>
+        <p>postiz-agent no necesita saber si el audio viene de cuentos, podcasts, demos, clases, newsletters o resúmenes internos. Necesita un slug y tres ficheros junto a un JSON mínimo.</p>
+      </div>
+
+      <div class="problem-grid">
+        <article class="problem-card">
+          <b>Paquete por slug</b>
+          <p>`slug.mp3` para narración, `slug.json` para metadatos y `slug-cover.png` o una portada fallback por mood.</p>
+        </article>
+        <article class="problem-card">
+          <b>JSON canónico</b>
+          <p>`title`, `content`, `mood`, `meta.slug`, `meta.brand`, `meta.generatedAt`, `beats[]` opcional y tags opcionales.</p>
+        </article>
+        <article class="problem-card">
+          <b>Adapters compatibles</b>
+          <p>Los aliases antiguos `titulo`, `contenido` y `vocabularioNuevo` siguen entrando, pero se normalizan al contrato genérico.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="flow-main">
+      <div class="section-header">
+        <div>
+          <p class="kicker">Flujo principal</p>
+          <h2 id="flow-main">Pipeline de `publish` y `render`.</h2>
+        </div>
+        <p>El orquestador transcribe una sola vez y después corre cada plataforma en paralelo. El modo `render` usa el mismo flujo con `dryRun`, así que previsualizar no es un camino alternativo.</p>
+      </div>
+
+      <div class="diagram-wrap">
+        <svg viewBox="0 0 1120 470" role="img" aria-labelledby="main-flow-title main-flow-desc">
+          <title id="main-flow-title">Diagrama del flujo principal de publicacion</title>
+          <desc id="main-flow-desc">Carpeta de contenido, lectura y schema, Whisper, moderación, render HyperFrames, publicadores y decision log.</desc>
+          <defs>
+            <marker id="arrow-main" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+              <path d="M2,2 L10,6 L2,10 Z" fill="#17212b"></path>
+            </marker>
+            <filter id="soft-shadow" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="9" stdDeviation="9" flood-color="#1a1b19" flood-opacity="0.13"></feDropShadow>
+            </filter>
+          </defs>
+          <rect width="1120" height="470" fill="#fffaf1"></rect>
+          <path d="M50 90 H1065" stroke="#d8c6a6" stroke-width="1.5" stroke-dasharray="6 8"></path>
+          <path d="M50 252 H1065" stroke="#d8c6a6" stroke-width="1.5" stroke-dasharray="6 8"></path>
+          <path d="M50 388 H1065" stroke="#d8c6a6" stroke-width="1.5" stroke-dasharray="6 8"></path>
+
+          <g filter="url(#soft-shadow)">
+            <rect x="42" y="52" width="175" height="96" rx="8" fill="#f6f0e5" stroke="#17212b" stroke-width="1.2"></rect>
+            <text x="62" y="82" fill="#245d7d" font-size="15" font-weight="800">Content output</text>
+            <text x="62" y="111" fill="#17212b" font-size="14">slug.mp3</text>
+            <text x="62" y="132" fill="#17212b" font-size="14">slug.json + cover</text>
+
+            <rect x="272" y="52" width="175" height="96" rx="8" fill="#fffaf1" stroke="#17212b" stroke-width="1.2"></rect>
+            <text x="292" y="82" fill="#20786f" font-size="15" font-weight="800">Reader + schema</text>
+            <text x="292" y="111" fill="#17212b" font-size="14">Zod valida item</text>
+            <text x="292" y="132" fill="#5b6470" font-size="13">src/content</text>
+
+            <rect x="502" y="52" width="175" height="96" rx="8" fill="#fffaf1" stroke="#17212b" stroke-width="1.2"></rect>
+            <text x="522" y="82" fill="#d9644a" font-size="15" font-weight="800">Whisper once</text>
+            <text x="522" y="111" fill="#17212b" font-size="14">word timestamps</text>
+            <text x="522" y="132" fill="#5b6470" font-size="13">cached JSON</text>
+
+            <rect x="732" y="52" width="175" height="96" rx="8" fill="#fffaf1" stroke="#17212b" stroke-width="1.2"></rect>
+            <text x="752" y="82" fill="#c9912f" font-size="15" font-weight="800">Moderación</text>
+            <text x="752" y="111" fill="#17212b" font-size="14">blocklist ES</text>
+            <text x="752" y="132" fill="#5b6470" font-size="13">warnings al log</text>
+
+            <rect x="502" y="208" width="175" height="96" rx="8" fill="#f6f0e5" stroke="#17212b" stroke-width="1.2"></rect>
+            <text x="522" y="238" fill="#5b456d" font-size="15" font-weight="800">HyperFrames</text>
+            <text x="522" y="267" fill="#17212b" font-size="14">HTML templates</text>
+            <text x="522" y="288" fill="#5b6470" font-size="13">1:1, 9:16, 16:9</text>
+
+            <rect x="260" y="346" width="600" height="78" rx="8" fill="#17212b" stroke="#17212b" stroke-width="1.2"></rect>
+            <text x="284" y="376" fill="#fffaf1" font-size="15" font-weight="800">Publishers en paralelo</text>
+            <text x="284" y="402" fill="#ffeec6" font-size="14">Postiz: X, TikTok, Instagram | YouTubeCLI: YouTube | RSS no-op: Spotify</text>
+
+            <rect x="948" y="208" width="130" height="216" rx="8" fill="#fffaf1" stroke="#17212b" stroke-width="1.2"></rect>
+            <text x="970" y="242" fill="#245d7d" font-size="15" font-weight="800">Decision log</text>
+            <text x="970" y="276" fill="#17212b" font-size="14">action</text>
+            <text x="970" y="300" fill="#17212b" font-size="14">reason</text>
+            <text x="970" y="324" fill="#17212b" font-size="14">result</text>
+            <text x="970" y="348" fill="#17212b" font-size="14">createdAt</text>
+            <text x="970" y="392" fill="#5b6470" font-size="13">JSONL memory</text>
+          </g>
+
+          <path d="M217 100 H272" stroke="#17212b" stroke-width="2.2" marker-end="url(#arrow-main)"></path>
+          <path d="M447 100 H502" stroke="#17212b" stroke-width="2.2" marker-end="url(#arrow-main)"></path>
+          <path d="M677 100 H732" stroke="#17212b" stroke-width="2.2" marker-end="url(#arrow-main)"></path>
+          <path d="M820 148 V184 C820 198 806 208 792 208 H677" stroke="#17212b" stroke-width="2.2" fill="none" marker-end="url(#arrow-main)"></path>
+          <path d="M590 304 V346" stroke="#17212b" stroke-width="2.2" marker-end="url(#arrow-main)"></path>
+          <path d="M860 385 H948" stroke="#17212b" stroke-width="2.2" marker-end="url(#arrow-main)"></path>
+          <path d="M920 100 C1004 100 1013 146 1013 208" stroke="#17212b" stroke-width="2.2" fill="none" marker-end="url(#arrow-main)"></path>
+        </svg>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="features">
+      <div class="section-header">
+        <div>
+          <p class="kicker">Features</p>
+          <h2 id="features">Lo que ya trae cableado.</h2>
+        </div>
+        <p>Las features no son adornos: casi todas reducen riesgo operativo de publicar contenido multimedia en varias plataformas desde un proceso programado.</p>
+      </div>
+
+      <div class="features-grid">
+        <article class="feature-card" data-n="01">
+          <b>`dispatch` cron-safe</b>
+          <p>Escanea paquetes completos, consulta historial de 30 días y elige el más antiguo pendiente.</p>
+        </article>
+        <article class="feature-card" data-n="02">
+          <b>Render previo sin publicar</b>
+          <p>`render` usa el pipeline real con `dryRun`, ideal para revisar subtítulos y estilo antes del feed.</p>
+        </article>
+        <article class="feature-card" data-n="03">
+          <b>Subtítulos karaoke</b>
+          <p>Whisper genera timestamps por palabra; HyperFrames los convierte en slides con highlight sincronizado.</p>
+        </article>
+        <article class="feature-card" data-n="04">
+          <b>Variantes por plataforma</b>
+          <p>X 1:1, TikTok e Instagram 9:16, YouTube 16:9. Spotify queda como canal RSS.</p>
+        </article>
+        <article class="feature-card" data-n="05">
+          <b>Instagram multi-parte</b>
+          <p>Audios largos se dividen en ventanas de hasta 170s, alineadas a beats o palabras y separadas 5 min.</p>
+        </article>
+        <article class="feature-card" data-n="06">
+          <b>Guardia anti-duplicados</b>
+          <p>Si una combinación slug + plataforma ya tuvo éxito en 24h, se salta salvo `--force`.</p>
+        </article>
+        <article class="feature-card" data-n="07">
+          <b>Retries con backoff</b>
+          <p>Errores transitorios de red o 5xx se reintentan. Los 4xx no se esconden.</p>
+        </article>
+        <article class="feature-card" data-n="08">
+          <b>Alertas webhook</b>
+          <p>Tras agotar retries, dispara una alerta fire-and-forget con slug, plataforma, error e intentos.</p>
+        </article>
+        <article class="feature-card" data-n="09">
+          <b>Moderación de captions</b>
+          <p>Blocklist española sobre tokens de Whisper para evitar transcripciones embarazosas.</p>
+        </article>
+        <article class="feature-card" data-n="10">
+          <b>Decision log JSONL</b>
+          <p>Memoria append-only para LLMs y humanos: que se intento, por que, resultado y timestamp.</p>
+        </article>
+        <article class="feature-card" data-n="11">
+          <b>Self-hosted Postiz</b>
+          <p>Incluye docker-compose y guias OAuth para mantener control de integraciones y scheduling.</p>
+        </article>
+        <article class="feature-card" data-n="12">
+          <b>CLI agent-readable</b>
+          <p>`--json` en comandos clave permite encadenarlo con agentes, cron y tooling externo.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="platforms">
+      <div class="section-header">
+        <div>
+          <p class="kicker">Superficies</p>
+          <h2 id="platforms">Un paquete, cinco destinos.</h2>
+        </div>
+        <p>Cada destino tiene un contrato distinto. El código mantiene esas diferencias en publishers pequeños y un registry central.</p>
+      </div>
+
+      <div class="platform-grid">
+        <article class="platform-card">
+          <b>X</b>
+          <span class="spec">1080 x 1080, 1:1</span>
+          <p>Video cuadrado vía Postiz. Caption corto con título, marca del JSON y hashtags.</p>
+        </article>
+        <article class="platform-card">
+          <b>TikTok</b>
+          <span class="spec">1080 x 1920, 9:16</span>
+          <p>Video vertical vía Postiz, pensado para narración completa y distribución short-form.</p>
+        </article>
+        <article class="platform-card">
+          <b>Instagram Reels</b>
+          <span class="spec">1080 x 1920, 9:16</span>
+          <p>Si supera 3 min, divide y agenda partes ordenadas con ribbon `PARTE i/N`.</p>
+        </article>
+        <article class="platform-card">
+          <b>YouTube</b>
+          <span class="spec">1920 x 1080, 16:9</span>
+          <p>Renderiza video y delega upload a YouTubeCLI para preservar analytics y log propio.</p>
+        </article>
+        <article class="platform-card">
+          <b>Spotify / Podcasts</b>
+          <span class="spec">RSS + MP3</span>
+          <p>Genera feed iTunes-compatible. Las plataformas lo consultan por polling.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="flow-dispatch">
+      <div class="section-header">
+        <div>
+          <p class="kicker">Autonomia</p>
+          <h2 id="flow-dispatch">Como decide que publicar.</h2>
+        </div>
+        <p>`dispatch` no adivina slugs. Solo considera pares `.json + .mp3`, ordena por `meta.generatedAt` o mtime y busca pendientes por plataforma en el decision log.</p>
+      </div>
+
+      <div class="diagram-wrap">
+        <svg viewBox="0 0 1120 360" role="img" aria-labelledby="dispatch-flow-title dispatch-flow-desc">
+          <title id="dispatch-flow-title">Diagrama de selección autónoma de contenido</title>
+          <desc id="dispatch-flow-desc">Escaneo de candidatos, filtrado por historias completas, consulta del historial y salida hacia publish o nothing pending.</desc>
+          <defs>
+            <marker id="arrow-dispatch" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+              <path d="M2,2 L10,6 L2,10 Z" fill="#17212b"></path>
+            </marker>
+          </defs>
+          <rect width="1120" height="360" fill="#fffaf1"></rect>
+          <g>
+            <rect x="44" y="86" width="170" height="96" rx="8" fill="#f6f0e5" stroke="#17212b"></rect>
+            <text x="64" y="120" fill="#245d7d" font-size="15" font-weight="800">Scan folder</text>
+            <text x="64" y="149" fill="#17212b" font-size="14">*.json + *.mp3</text>
+
+            <rect x="274" y="86" width="184" height="96" rx="8" fill="#fffaf1" stroke="#17212b"></rect>
+            <text x="294" y="120" fill="#20786f" font-size="15" font-weight="800">Candidate list</text>
+            <text x="294" y="149" fill="#17212b" font-size="14">sort oldest first</text>
+
+            <rect x="518" y="86" width="200" height="96" rx="8" fill="#fffaf1" stroke="#17212b"></rect>
+            <text x="538" y="120" fill="#c9912f" font-size="15" font-weight="800">Read 30d history</text>
+            <text x="538" y="149" fill="#17212b" font-size="14">success per platform</text>
+
+            <path d="M806 62 L936 134 L806 206 L676 134 Z" fill="#f6f0e5" stroke="#17212b"></path>
+            <text x="759" y="125" fill="#d9644a" font-size="15" font-weight="800">Pending?</text>
+            <text x="734" y="150" fill="#17212b" font-size="14">any target missing</text>
+
+            <rect x="882" y="252" width="188" height="72" rx="8" fill="#17212b" stroke="#17212b"></rect>
+            <text x="908" y="284" fill="#fffaf1" font-size="15" font-weight="800">publish(slug)</text>
+            <text x="908" y="306" fill="#ffeec6" font-size="13">render + upload + log</text>
+
+            <rect x="882" y="28" width="188" height="72" rx="8" fill="#fffaf1" stroke="#17212b"></rect>
+            <text x="906" y="60" fill="#5b456d" font-size="15" font-weight="800">Nothing pending</text>
+            <text x="906" y="82" fill="#5b6470" font-size="13">exit 0, no churn</text>
+          </g>
+          <path d="M214 134 H274" stroke="#17212b" stroke-width="2.2" marker-end="url(#arrow-dispatch)"></path>
+          <path d="M458 134 H518" stroke="#17212b" stroke-width="2.2" marker-end="url(#arrow-dispatch)"></path>
+          <path d="M718 134 H676" stroke="#17212b" stroke-width="2.2" marker-end="url(#arrow-dispatch)"></path>
+          <path d="M936 134 C980 134 986 112 986 100" stroke="#17212b" stroke-width="2.2" fill="none" marker-end="url(#arrow-dispatch)"></path>
+          <text x="990" y="126" fill="#5b6470" font-size="13">no</text>
+          <path d="M936 134 C996 168 976 220 976 252" stroke="#17212b" stroke-width="2.2" fill="none" marker-end="url(#arrow-dispatch)"></path>
+          <text x="982" y="205" fill="#5b6470" font-size="13">si</text>
+        </svg>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="reliability">
+      <div class="section-header">
+        <div>
+          <p class="kicker">Fiabilidad</p>
+          <h2 id="reliability">Guardas antes de tocar el feed.</h2>
+        </div>
+        <p>El sistema separa errores recuperables de errores que deben parar el run. La idea de producto: publicar menos, pero no publicar mal.</p>
+      </div>
+
+      <div class="two-col">
+        <div class="diagram-wrap">
+          <svg viewBox="0 0 540 520" role="img" aria-labelledby="reliability-flow-title">
+            <title id="reliability-flow-title">Flujo de fiabilidad por plataforma</title>
+            <defs>
+              <marker id="arrow-rel" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+                <path d="M2,2 L10,6 L2,10 Z" fill="#17212b"></path>
+              </marker>
+            </defs>
+            <rect width="540" height="520" fill="#fffaf1"></rect>
+            <rect x="72" y="34" width="396" height="64" rx="8" fill="#17212b"></rect>
+            <text x="118" y="73" fill="#fffaf1" font-size="16" font-weight="800">Start platform publish</text>
+
+            <path d="M270 126 L408 196 L270 266 L132 196 Z" fill="#f6f0e5" stroke="#17212b"></path>
+            <text x="190" y="190" fill="#245d7d" font-size="15" font-weight="800">Already successful</text>
+            <text x="204" y="214" fill="#17212b" font-size="14">within last 24h?</text>
+
+            <rect x="44" y="326" width="172" height="76" rx="8" fill="#fffaf1" stroke="#17212b"></rect>
+            <text x="70" y="358" fill="#20786f" font-size="15" font-weight="800">Skip + log</text>
+            <text x="70" y="380" fill="#5b6470" font-size="13">no duplicate post</text>
+
+            <rect x="324" y="326" width="172" height="76" rx="8" fill="#fffaf1" stroke="#17212b"></rect>
+            <text x="352" y="358" fill="#d9644a" font-size="15" font-weight="800">Retry wrapper</text>
+            <text x="352" y="380" fill="#5b6470" font-size="13">3 attempts + jitter</text>
+
+            <rect x="324" y="430" width="172" height="58" rx="8" fill="#f6f0e5" stroke="#17212b"></rect>
+            <text x="349" y="464" fill="#c9912f" font-size="15" font-weight="800">Alert on exhaust</text>
+
+            <path d="M270 98 V126" stroke="#17212b" stroke-width="2.2" marker-end="url(#arrow-rel)"></path>
+            <path d="M202 238 C150 274 130 294 130 326" stroke="#17212b" stroke-width="2.2" fill="none" marker-end="url(#arrow-rel)"></path>
+            <text x="128" y="282" fill="#5b6470" font-size="13">yes</text>
+            <path d="M338 238 C390 274 410 294 410 326" stroke="#17212b" stroke-width="2.2" fill="none" marker-end="url(#arrow-rel)"></path>
+            <text x="396" y="282" fill="#5b6470" font-size="13">no</text>
+            <path d="M410 402 V430" stroke="#17212b" stroke-width="2.2" marker-end="url(#arrow-rel)"></path>
+          </svg>
+        </div>
+
+        <div class="diagram-wrap">
+          <svg viewBox="0 0 540 520" role="img" aria-labelledby="ig-flow-title">
+            <title id="ig-flow-title">Flujo de division automatica para Instagram</title>
+            <defs>
+              <marker id="arrow-ig" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+                <path d="M2,2 L10,6 L2,10 Z" fill="#17212b"></path>
+              </marker>
+            </defs>
+            <rect width="540" height="520" fill="#fffaf1"></rect>
+            <rect x="72" y="34" width="396" height="64" rx="8" fill="#17212b"></rect>
+            <text x="124" y="73" fill="#fffaf1" font-size="16" font-weight="800">Instagram publisher</text>
+
+            <path d="M270 126 L408 196 L270 266 L132 196 Z" fill="#f6f0e5" stroke="#17212b"></path>
+            <text x="205" y="190" fill="#d9644a" font-size="15" font-weight="800">Audio over</text>
+            <text x="216" y="214" fill="#17212b" font-size="14">180 seconds?</text>
+
+            <rect x="44" y="326" width="172" height="76" rx="8" fill="#fffaf1" stroke="#17212b"></rect>
+            <text x="68" y="358" fill="#20786f" font-size="15" font-weight="800">Normal Reel</text>
+            <text x="68" y="380" fill="#5b6470" font-size="13">single render</text>
+
+            <rect x="324" y="318" width="172" height="92" rx="8" fill="#fffaf1" stroke="#17212b"></rect>
+            <text x="348" y="348" fill="#245d7d" font-size="15" font-weight="800">Split into parts</text>
+            <text x="348" y="371" fill="#5b6470" font-size="13">&lt;= 170s windows</text>
+            <text x="348" y="392" fill="#5b6470" font-size="13">snap to beats/words</text>
+
+            <rect x="324" y="438" width="172" height="58" rx="8" fill="#f6f0e5" stroke="#17212b"></rect>
+            <text x="345" y="464" fill="#c9912f" font-size="15" font-weight="800">Schedule +5 min</text>
+            <text x="345" y="484" fill="#5b6470" font-size="13">PARTE i/N ribbon</text>
+
+            <path d="M270 98 V126" stroke="#17212b" stroke-width="2.2" marker-end="url(#arrow-ig)"></path>
+            <path d="M202 238 C150 274 130 294 130 326" stroke="#17212b" stroke-width="2.2" fill="none" marker-end="url(#arrow-ig)"></path>
+            <text x="128" y="282" fill="#5b6470" font-size="13">no</text>
+            <path d="M338 238 C390 274 410 294 410 318" stroke="#17212b" stroke-width="2.2" fill="none" marker-end="url(#arrow-ig)"></path>
+            <text x="396" y="282" fill="#5b6470" font-size="13">yes</text>
+            <path d="M410 410 V438" stroke="#17212b" stroke-width="2.2" marker-end="url(#arrow-ig)"></path>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="architecture">
+      <div class="section-header">
+        <div>
+          <p class="kicker">Arquitectura</p>
+          <h2 id="architecture">Donde vive cada responsabilidad.</h2>
+        </div>
+        <p>El diseño favorece archivos pequeños y responsabilidades claras: orquestación, media, plataformas, logs y utilidades. Agregar una plataforma es un publisher nuevo y una entrada en el registry.</p>
+      </div>
+
+      <div class="module-grid">
+        <article class="module-card">
+          <b>Entrada y contrato</b>
+          <p>Valida `StorySchema`, localiza audio y cover, y expone assets para el pipeline.</p>
+          <code>src/types.ts</code>
+          <code>src/content/reader.ts</code>
+        </article>
+        <article class="module-card">
+          <b>Orquestacion</b>
+          <p>Controla transcripción, moderación, publicación paralela, retries, alertas e idempotencia.</p>
+          <code>src/orchestrator.ts</code>
+          <code>src/idempotency.ts</code>
+        </article>
+        <article class="module-card">
+          <b>Media pipeline</b>
+          <p>Whisper produce palabras con tiempos, HyperFrames renderiza video por aspect ratio.</p>
+          <code>src/media/subtitles.ts</code>
+          <code>src/media/slide-video.ts</code>
+        </article>
+        <article class="module-card">
+          <b>Publicadores</b>
+          <p>Una estrategia por plataforma, con base compartida para video y Postiz.</p>
+          <code>src/platforms/base.ts</code>
+          <code>src/platforms/registry.ts</code>
+        </article>
+        <article class="module-card">
+          <b>Podcast RSS</b>
+          <p>Construye feed compatible con iTunes/Spotify desde los mismos JSON y MP3.</p>
+          <code>src/platforms/spotify-rss.ts</code>
+        </article>
+        <article class="module-card">
+          <b>Memoria operativa</b>
+          <p>Append-only JSONL con intento, razon, plataforma, resultado y fecha.</p>
+          <code>src/decisions/log.ts</code>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="truths">
+      <div class="section-header">
+        <div>
+          <p class="kicker">Lectura honesta</p>
+          <h2 id="truths">Estado actual y limites.</h2>
+        </div>
+        <p>Esto es útil para comunicar con CTO: separa lo que el repo ya soporta de lo que aún es decisión futura o dependencia externa.</p>
+      </div>
+
+      <div class="truth-grid">
+        <article class="truth-card" data-tone="ship">
+          <b>Shipping</b>
+          <p>Pipeline end-to-end, CLI, tests, dispatch, retries, idempotencia, moderation, RSS y deploy Postiz.</p>
+        </article>
+        <article class="truth-card" data-tone="ship">
+          <b>Plantilla visual real</b>
+          <p>`fantasia` existe. Otros moods caen a `fantasia` con warning en el resultado.</p>
+        </article>
+        <article class="truth-card" data-tone="gap">
+          <b>No busca clips virales</b>
+          <p>Renderiza la pieza completa por defecto. La selección automática de clips queda fuera del alcance actual.</p>
+        </article>
+        <article class="truth-card" data-tone="gap">
+          <b>No sube RSS a storage</b>
+          <p>`rss` genera `feed.xml`; subir feed y MP3 a R2 queda como paso operacional externo.</p>
+        </article>
+      </div>
+
+      <p class="note"><strong>Traducción producto:</strong> postiz-agent no intenta ser un editor creativo generalista. Es una cinta transportadora confiable para convertir audio ya generado en piezas sociales publicables, con suficientes guardas para que cron pueda correr sin estar mirando cada API.</p>
+    </section>
+
+    <div class="footer">
+      <span><strong>Basado en codigo local:</strong> README, SKILL.md, `src/orchestrator.ts`, `src/media/*`, `src/platforms/*`, `src/dispatch.ts`.</span>
+      <span>Infográfico estático, listo para abrir en navegador o imprimir a PDF.</span>
+    </div>
+  </main>
+</body>
+</html>

@@ -4,15 +4,15 @@ import { resolve, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { SpotifyRssBuilder, buildTeaser } from '../../src/platforms/spotify-rss.js';
 
-const fixtureDir = resolve(__dirname, '..', 'fixtures', 'audiokids-output');
+const fixtureDir = resolve(__dirname, '..', 'fixtures', 'content-output');
 
 const channel = {
-  title: 'AudioKids',
-  description: 'Audiocuentos para niños',
-  link: 'https://audiokids.org',
-  author: 'AudioKids',
-  email: 'hello@audiokids.org',
-  imageUrl: 'https://audiokids.org/cover.png',
+  title: 'Postiz Agent Feed',
+  description: 'Audio items for social publishing',
+  link: 'https://example.com',
+  author: 'Postiz Agent',
+  email: 'hello@example.com',
+  imageUrl: 'https://example.com/cover.png',
 };
 
 // ─── buildTeaser (pure) ─────────────────────────────────────────────────────
@@ -41,14 +41,14 @@ describe('buildTeaser()', () => {
 });
 
 // ─── SpotifyRssBuilder against the checked-in fixture ───────────────────────
-describe('SpotifyRssBuilder (against tests/fixtures/audiokids-output)', () => {
+describe('SpotifyRssBuilder (against tests/fixtures/content-output)', () => {
   it('renders a valid iTunes feed for the fixture story', async () => {
     const builder = new SpotifyRssBuilder(channel, fixtureDir, 'https://example.com');
     const xml = await builder.build();
     expect(xml).toContain('<?xml version="1.0" encoding="UTF-8"?>');
     expect(xml).toContain('<rss version="2.0"');
-    expect(xml).toContain('<title>AudioKids</title>');
-    expect(xml).toContain('<itunes:email>hello@audiokids.org</itunes:email>');
+    expect(xml).toContain('<title>Postiz Agent Feed</title>');
+    expect(xml).toContain('<itunes:email>hello@example.com</itunes:email>');
     expect(xml).toContain('El dragón curioso');
     expect(xml).toContain('https://example.com/audio/dragon-marcos.mp3');
   });
@@ -64,7 +64,7 @@ describe('SpotifyRssBuilder (against tests/fixtures/audiokids-output)', () => {
     expect(xml).not.toContain('Kids & Tales <podcast>');
   });
 
-  it('returns a feed shell with no items when the audiokids dir does not exist', async () => {
+  it('returns a feed shell with no items when the content dir does not exist', async () => {
     const builder = new SpotifyRssBuilder(channel, '/this/path/does/not/exist', 'https://example.com');
     const xml = await builder.build();
     expect(xml).toContain('<rss');

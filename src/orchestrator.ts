@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { config } from './config.js';
-import { AudioKidsReader } from './audiokids/reader.js';
+import { ContentReader } from './content/reader.js';
 import { SubtitleGenerator } from './media/subtitles.js';
 import { getPublisher } from './platforms/registry.js';
 import type { PlatformPublisher, PublishContext } from './platforms/base.js';
@@ -13,7 +13,7 @@ import { moderateWords } from './media/caption-moderation.js';
 import type { CaptionStatus, Platform, PublishResult, WordEntry } from './types.js';
 
 export interface PublishOptions {
-  storySlug: string;
+  contentSlug: string;
   platforms: Platform[];
   dryRun?: boolean;
   skipTranscription?: boolean;
@@ -31,8 +31,8 @@ export interface PublishReport {
 }
 
 /**
- * End-to-end pipeline: AudioKids story → all requested platforms.
- * - Reads story assets from AudioKids output
+ * End-to-end pipeline: source content → all requested platforms.
+ * - Reads MP3, JSON metadata, and cover art from the configured content output
  * - Transcribes audio once (whisper word-level) and reuses across publishers
  * - Applies caption moderation to the word list before rendering
  * - Publishes platforms concurrently through the retry helper, with idempotency
@@ -40,16 +40,16 @@ export interface PublishReport {
  * - Records every decision in a JSONL log for later analysis
  */
 export class Orchestrator {
-  private readonly reader = new AudioKidsReader();
+  private readonly reader = new ContentReader();
   private readonly subs = new SubtitleGenerator();
   private readonly decisions = new DecisionLog();
 
   async publish(opts: PublishOptions): Promise<PublishReport> {
-    const assets = this.reader.readStory(opts.storySlug);
+    const assets = this.reader.readContent(opts.contentSlug);
     const m = assets.metadata;
-    console.log(`\nstory: "${m.titulo}" (${m.meta.wordCount} words, ${m.meta.estimatedDurationMin}min)`);
+    console.log(`\ncontent: "${m.title}" (${m.meta.wordCount} words, ${m.meta.estimatedDurationMin}min)`);
 
-    const workDir = join(config.paths.tmpDir, opts.storySlug);
+    const workDir = join(config.paths.tmpDir, opts.contentSlug);
     mkdirSync(workDir, { recursive: true });
 
     // ─── transcription + moderation ─────────────────────────────────────────
@@ -76,7 +76,7 @@ export class Orchestrator {
         baseWarnings.push(`transcription failed: ${t.error}`);
         if (!opts.allowNoCaptions) {
           console.error(`\n✗ whisper transcription failed and --allow-no-captions was not passed; aborting.`);
-          return { slug: opts.storySlug, results: [], fatalCaptionFailure: true };
+          return { slug: opts.contentSlug, results: [], fatalCaptionFailure: true };
         }
       }
     }
@@ -96,7 +96,7 @@ export class Orchestrator {
       return { platform, success: false, error, timestamp: new Date().toISOString() };
     });
 
-    return { slug: opts.storySlug, results };
+    return { slug: opts.contentSlug, results };
   }
 
   private async publishPlatform(
@@ -110,8 +110,8 @@ export class Orchestrator {
 
     // Idempotency: skip if we already successfully published in the last 24h.
     if (!opts.force && !opts.dryRun) {
-      const history = this.decisions.list({ storySlug: opts.storySlug, platform });
-      const check = wasRecentlyPublished(history, opts.storySlug, platform);
+      const history = this.decisions.list({ contentSlug: opts.contentSlug, platform });
+      const check = wasRecentlyPublished(history, opts.contentSlug, platform);
       if (check.recent) {
         console.log(`  ${platform} skipped: already published in the last 24h (${check.entry?.createdAt})`);
         const skipped: PublishResult = {
@@ -125,7 +125,7 @@ export class Orchestrator {
         };
         await this.decisions.record({
           action: `publish.${platform}.skipped`,
-          storySlug: opts.storySlug,
+          contentSlug: opts.contentSlug,
           platform,
           reason: opts.reason ?? 'scheduled daily publication',
           result: skipped,
@@ -147,7 +147,7 @@ export class Orchestrator {
       for (const part of decorated.parts) {
         await this.decisions.record({
           action: `publish.${platform}.part${part.partIndex ?? 0}`,
-          storySlug: opts.storySlug,
+          contentSlug: opts.contentSlug,
           platform,
           reason: opts.reason ?? 'scheduled daily publication',
           result: part,
@@ -156,7 +156,7 @@ export class Orchestrator {
     } else {
       await this.decisions.record({
         action: `publish.${platform}`,
-        storySlug: opts.storySlug,
+        contentSlug: opts.contentSlug,
         platform,
         reason: opts.reason ?? 'scheduled daily publication',
         result: decorated,

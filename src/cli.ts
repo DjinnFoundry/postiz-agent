@@ -9,7 +9,7 @@ import { PostizClient } from './platforms/postiz.js';
 import { config } from './config.js';
 import { run } from './lib/process.js';
 import { validateSlug } from './lib/slug.js';
-import { listCandidates, selectNextStory } from './dispatch.js';
+import { listCandidates, selectNextContent } from './dispatch.js';
 import { PlatformSchema, type Platform } from './types.js';
 
 const program = new Command();
@@ -17,8 +17,8 @@ const program = new Command();
 program
   .name('postiz-agent')
   .description(
-    'Autonomous publishing agent for AudioKids audio stories.\n\n' +
-    'Given a story slug, the agent builds slide-based videos with synced captions\n' +
+    'Autonomous publishing agent for MP3-first content pipelines.\n\n' +
+    'Given a content slug, the agent builds slide-based videos with synced captions\n' +
     'and pushes them to X, TikTok, Instagram, YouTube, and Spotify (RSS).\n\n' +
     'Config is read from .env at the project root. See .env.example for required vars.'
   )
@@ -26,7 +26,7 @@ program
   .addHelpText('after', `
 Examples:
   $ postiz-agent status
-      Show environment health (Postiz reachable, whisper available, story dir).
+      Show environment health (Postiz reachable, whisper available, content dir).
 
   $ postiz-agent publish --slug dragon-marcos --platforms x,tiktok --dry-run
       Build videos for X and TikTok without uploading. Useful for previewing.
@@ -38,10 +38,10 @@ Examples:
       Just generate MP4 files. Skip all platform uploads.
 
   $ postiz-agent decisions --slug dragon-marcos
-      Show every publish attempt for that story, as JSON.
+      Show every publish attempt for that item, as JSON.
 
   $ postiz-agent rss --output ./feed.xml
-      Rebuild the Spotify-compatible podcast feed from AudioKids output.
+      Rebuild the Spotify-compatible podcast feed from the configured content output.
 
 See SKILL.md for agent-oriented workflows and decision heuristics.
 `);
@@ -49,8 +49,8 @@ See SKILL.md for agent-oriented workflows and decision heuristics.
 // ─────────────────────────── publish ───────────────────────────
 program
   .command('publish')
-  .description('Build per-platform videos and publish a story to each selected target')
-  .requiredOption('-s, --slug <slug>', 'AudioKids story slug (file basename without extension)')
+  .description('Build per-platform videos and publish a content item to each selected target')
+  .requiredOption('-s, --slug <slug>', 'content slug (file basename without extension)')
   .addOption(
     new Option('-p, --platforms <list>', 'comma-separated platforms')
       .default('x,tiktok,instagram,youtube'),
@@ -83,7 +83,7 @@ program.commands[0].action(async (opts) => {
   const platforms = parsePlatforms(opts.platforms);
   const orch = new Orchestrator();
   const report = await orch.publish({
-    storySlug: validateSlug(opts.slug),
+    contentSlug: validateSlug(opts.slug),
     platforms,
     dryRun: opts.dryRun,
     skipTranscription: opts.skipTranscription,
@@ -103,7 +103,7 @@ program.commands[0].action(async (opts) => {
 program
   .command('render')
   .description('Generate MP4 videos for the given platforms without uploading anywhere')
-  .requiredOption('-s, --slug <slug>', 'AudioKids story slug')
+  .requiredOption('-s, --slug <slug>', 'content slug')
   .option('-p, --platforms <list>', 'comma-separated platforms', 'tiktok,instagram,youtube,x')
   .option('--skip-transcription', 'skip whisper (no captions)', false)
   .option('--allow-no-captions', 'continue (with empty captions) even if whisper crashes; default is to abort', false)
@@ -117,7 +117,7 @@ but makes intent explicit in the decision log.
     const platforms = parsePlatforms(opts.platforms);
     const orch = new Orchestrator();
     const report = await orch.publish({
-      storySlug: validateSlug(opts.slug),
+      contentSlug: validateSlug(opts.slug),
       platforms,
       dryRun: true,
       skipTranscription: opts.skipTranscription,
@@ -133,16 +133,16 @@ but makes intent explicit in the decision log.
 // ─────────────────────────── rss ───────────────────────────
 program
   .command('rss')
-  .description('Build an iTunes/Spotify-compatible podcast RSS feed from AudioKids output')
+  .description('Build an iTunes/Spotify-compatible podcast RSS feed from content output')
   .option('-o, --output <path>', 'output XML path', './tmp/feed.xml')
-  .option('--title <t>', 'podcast title', 'AudioKids')
-  .option('--description <d>', 'podcast description', 'Audiocuentos para niños, creados con IA')
-  .option('--link <l>', 'podcast website URL', 'https://audiokids.org')
-  .option('--author <a>', 'podcast author', 'AudioKids')
-  .option('--email <e>', 'owner email (required by iTunes)', 'hello@audiokids.org')
-  .option('--image <i>', 'cover image URL (1400x1400 PNG recommended)', 'https://audiokids.org/podcast-cover.png')
+  .option('--title <t>', 'podcast title', config.content.brand)
+  .option('--description <d>', 'podcast description', 'Audio episodes generated from a local content pipeline')
+  .option('--link <l>', 'podcast website URL', 'https://example.com')
+  .option('--author <a>', 'podcast author', config.content.brand)
+  .option('--email <e>', 'owner email (required by iTunes)', 'hello@example.com')
+  .option('--image <i>', 'cover image URL (1400x1400 PNG recommended)', 'https://example.com/podcast-cover.png')
   .addHelpText('after', `
-Walks AUDIOKIDS_OUTPUT_DIR and emits one <item> per story that has both a
+Walks CONTENT_OUTPUT_DIR and emits one <item> per content item that has both a
 .json metadata file and a .mp3 audio file. Sort: newest first.
 
 Host the resulting feed.xml + all MP3 files on a public URL, then submit the
@@ -167,24 +167,24 @@ feed URL once at podcasters.spotify.com/dash/submit. Spotify polls it hourly.
 program
   .command('decisions')
   .description('Query the JSONL decision log (every publish attempt, with reason and outcome)')
-  .option('-s, --slug <slug>', 'filter by story slug')
+  .option('-s, --slug <slug>', 'filter by content slug')
   .option('-p, --platform <platform>', 'filter by platform (x, tiktok, instagram, youtube, spotify)')
   .option('--pretty', 'pretty-print with 2-space indent', false)
   .addHelpText('after', `
 Decisions are appended to data/decisions.jsonl on every publish or render. Each
-entry records: action, reason, storySlug, platform, result (post id / url / error),
+entry records: action, reason, contentSlug, platform, result (post id / url / error),
 and createdAt. Useful for agent memory across runs — "did yesterday's tiktok
 post succeed?" is a single grep, not a re-check of a platform API.
 
 Examples:
   postiz-agent decisions                              # everything
-  postiz-agent decisions --slug dragon-marcos         # one story, every platform
+  postiz-agent decisions --slug launch-recap          # one item, every platform
   postiz-agent decisions --platform x                 # all X history
 `)
   .action((opts) => {
     const log = new DecisionLog();
     const slug = opts.slug ? validateSlug(opts.slug) : undefined;
-    const entries = log.list({ storySlug: slug, platform: opts.platform });
+    const entries = log.list({ contentSlug: slug, platform: opts.platform });
     if (opts.pretty) console.log(JSON.stringify(entries, null, 2));
     else for (const e of entries) console.log(JSON.stringify(e));
   });
@@ -197,7 +197,7 @@ program
   .option('--strict', 'fail (exit 1) on any warning, including disabled integrations', false)
   .addHelpText('after', `
 Run this first before a publish to catch config errors early.
-Checks: ffmpeg, whisper, hyperframes CLI, Postiz API, AudioKids output dir,
+Checks: ffmpeg, whisper, hyperframes CLI, Postiz API, content output dir,
 and each Postiz integration for X/TikTok/Instagram/YouTube (warns if disabled
 or missing — reconnect via the Postiz UI when that happens).
 
@@ -247,7 +247,7 @@ program
 // ─────────────────────────── dispatch ───────────────────────────
 program
   .command('dispatch')
-  .description('Autonomously pick the next story to publish and run it. Cron-safe.')
+  .description('Autonomously pick the next content item to publish and run it. Cron-safe.')
   .addOption(
     new Option('-p, --platforms <list>', 'comma-separated target platforms')
       .default('x,tiktok,instagram,youtube'),
@@ -256,8 +256,8 @@ program
   .option('--json', 'emit machine-readable JSON on stdout (nothing else)', false)
   .option('--reason <text>', 'reason recorded in the decision log', 'scheduled autonomous dispatch')
   .addHelpText('after', `
-Scans AUDIOKIDS_OUTPUT_DIR for every *.json + *.mp3 pair, consults the decision
-log, and picks the OLDEST story (by meta.generatedAt if present else file mtime)
+Scans CONTENT_OUTPUT_DIR for every *.json + *.mp3 pair, consults the decision
+log, and picks the OLDEST item (by meta.generatedAt if present else file mtime)
 that does NOT yet have a successful publish in the last 30 days on ALL of the
 requested platforms. Exits 0 with {"dispatched": false, "reason": "nothing
 pending"} when nothing is to be done — safe to run from cron every N hours.
@@ -270,8 +270,8 @@ Examples:
   .action(async (opts) => {
     const platforms = parsePlatforms(opts.platforms);
     const log = new DecisionLog().list();
-    const candidates = listCandidates(config.audiokids.outputDir);
-    const slug = selectNextStory(candidates, log, platforms);
+    const candidates = listCandidates(config.content.outputDir);
+    const slug = selectNextContent(candidates, log, platforms);
     if (!slug) {
       const payload = { dispatched: false, reason: 'nothing pending' };
       if (opts.json) process.stdout.write(JSON.stringify(payload) + '\n');
@@ -283,7 +283,7 @@ Examples:
 
     const orch = new Orchestrator();
     const report = await orch.publish({
-      storySlug: slug,
+      contentSlug: slug,
       platforms,
       dryRun: opts.dryRun,
       reason: opts.reason,
@@ -312,20 +312,20 @@ async function runStatusChecks(): Promise<Check[]> {
   checks.push(await binCheck('whisper', '--help', false));
   checks.push(await binCheck('npx', '--version', true));
 
-  const akDir = config.audiokids.outputDir;
+  const contentDir = config.content.outputDir;
   checks.push({
-    label: `AudioKids output dir`,
-    ok: existsSync(akDir),
-    detail: akDir,
+    label: `Content output dir`,
+    ok: existsSync(contentDir),
+    detail: contentDir,
     required: true,
   });
 
   try {
     const { accessSync, constants } = await import('node:fs');
-    accessSync(config.audiokids.outputDir, constants.R_OK);
-    checks.push({ label: 'AudioKids output dir readable', ok: true, required: true });
+    accessSync(config.content.outputDir, constants.R_OK);
+    checks.push({ label: 'Content output dir readable', ok: true, required: true });
   } catch (err) {
-    checks.push({ label: 'AudioKids output dir readable', ok: false, detail: String(err), required: true });
+    checks.push({ label: 'Content output dir readable', ok: false, detail: String(err), required: true });
   }
 
   try {

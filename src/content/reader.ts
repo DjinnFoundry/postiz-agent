@@ -3,23 +3,22 @@ import { join } from 'node:path';
 import { config } from '../config.js';
 import { StorySchema, type Story, type StoryAssets } from '../types.js';
 
-export class AudioKidsReader {
-  constructor(private readonly outputDir: string = config.audiokids.outputDir) {}
+export class ContentReader {
+  constructor(private readonly outputDir: string = config.content.outputDir) {}
 
-  readStory(slug: string): StoryAssets {
+  readContent(slug: string): StoryAssets {
     const jsonPath = join(this.outputDir, `${slug}.json`);
     const mp3Path = join(this.outputDir, `${slug}.mp3`);
 
     if (!existsSync(jsonPath)) {
-      throw new Error(`Story metadata not found: ${jsonPath}`);
+      throw new Error(`Content metadata not found: ${jsonPath}`);
     }
     if (!existsSync(mp3Path)) {
-      throw new Error(`Story audio not found: ${mp3Path}. Run the AudioKids pipeline first.`);
+      throw new Error(`Content audio not found: ${mp3Path}. Run the upstream MP3 pipeline first.`);
     }
 
     const raw = JSON.parse(readFileSync(jsonPath, 'utf-8'));
     const metadata = StorySchema.parse(raw);
-
     const coverPath = this.findCover(slug, metadata);
 
     return {
@@ -28,6 +27,11 @@ export class AudioKidsReader {
       coverPngPath: coverPath,
       metadata,
     };
+  }
+
+  /** Backward-compatible method name. Prefer readContent. */
+  readStory(slug: string): StoryAssets {
+    return this.readContent(slug);
   }
 
   private findCover(slug: string, metadata: Story): string {

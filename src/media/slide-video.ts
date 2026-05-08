@@ -46,8 +46,8 @@ const STATIC_PROJECT_ENTRIES = ['hyperframes.json', 'meta.json', 'templates'] as
  * so concurrent renders do NOT clobber each other's staged audio, transcript, or index.html.
  * The workspace is cleaned up on both success and failure.
  *
- * Multi-part publishes (IG Reels on cuentos > 3min) call build() N times with different
- * clipStartSec/clipDurationSec/partIndex. Mood fallbacks (e.g. `calma` → `fantasia`) are
+ * Multi-part publishes (IG Reels over 3min) call build() N times with different
+ * clipStartSec/clipDurationSec/partIndex. Mood fallbacks (e.g. `calma` to `fantasia`) are
  * surfaced via the BuildResult.warnings[] array for the publisher + decision log.
  */
 export class SlideVideoBuilder {
@@ -111,8 +111,9 @@ export class SlideVideoBuilder {
   ) {
     const m = input.assets.metadata;
     const payload: Record<string, unknown> = {
-      title: m.titulo,
-      byline: `${m.meta.name} · ${m.meta.age} años`,
+      title: m.title,
+      byline: buildByline(m.meta),
+      brand: m.meta.brand ?? config.content.brand,
       mood: m.mood,
       audioSrc: 'assets/narration.mp3',
       words,
@@ -190,4 +191,13 @@ function clipWords(words: WordEntry[], startSec: number, endSec: number): WordEn
       start: Math.max(0, w.start - startSec),
       end: Math.max(0, Math.min(w.end, endSec) - startSec),
     }));
+}
+
+function buildByline(meta: Record<string, unknown>): string {
+  if (typeof meta.byline === 'string' && meta.byline.trim()) return meta.byline.trim();
+  if (typeof meta.author === 'string' && meta.author.trim()) return meta.author.trim();
+  const audienceName = typeof meta.audienceName === 'string' ? meta.audienceName.trim() : '';
+  const audienceAge = typeof meta.audienceAge === 'number' ? `${meta.audienceAge} años` : '';
+  const audience = [audienceName, audienceAge].filter(Boolean).join(' · ');
+  return audience || config.content.brand;
 }

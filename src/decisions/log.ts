@@ -22,7 +22,7 @@ export class DecisionLog {
 
   async record(params: {
     action: string;
-    storySlug: string;
+    contentSlug: string;
     platform: Platform;
     reason: string;
     result: PublishResult;
@@ -36,14 +36,22 @@ export class DecisionLog {
     return entry;
   }
 
-  list(filter?: { storySlug?: string; platform?: Platform }): DecisionLogEntry[] {
+  list(filter?: { contentSlug?: string; platform?: Platform }): DecisionLogEntry[] {
     if (!existsSync(this.logPath)) return [];
     const lines = readFileSync(this.logPath, 'utf-8').split('\n').filter(Boolean);
-    const entries = lines.map(l => JSON.parse(l) as DecisionLogEntry);
+    const entries = lines
+      .map(l => normalizeEntry(JSON.parse(l) as DecisionLogEntry & { storySlug?: string }))
+      .filter((e): e is DecisionLogEntry => Boolean(e));
     return entries.filter(e => {
-      if (filter?.storySlug && e.storySlug !== filter.storySlug) return false;
+      if (filter?.contentSlug && e.contentSlug !== filter.contentSlug) return false;
       if (filter?.platform && e.platform !== filter.platform) return false;
       return true;
     });
   }
+}
+
+function normalizeEntry(entry: DecisionLogEntry & { storySlug?: string }): DecisionLogEntry | null {
+  const contentSlug = entry.contentSlug ?? entry.storySlug;
+  if (!contentSlug) return null;
+  return { ...entry, contentSlug };
 }

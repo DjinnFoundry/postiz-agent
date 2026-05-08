@@ -2,7 +2,7 @@
 
 > Cron-driven autonomous publisher for any local MP3-first pipeline. Consumes a directory of `slug.mp3 + slug.json + slug-cover.png`, renders per-platform slide videos with word-level karaoke captions, and publishes to X, TikTok, Instagram, YouTube, and Spotify (RSS) via [Postiz](https://github.com/gitroomhq/postiz-app) self-hosted.
 
-Extracted and open-sourced from the [AudioKids](https://audiokids.org) daily-publishing pipeline because the pattern generalises: whisper-crash-hard-stop, 24h per-platform idempotency, retry with backoff, webhook alerts after exhaustion, Spanish caption-moderation blocklist, and a JSONL decision log designed for an LLM to grep across runs.
+Extracted from a daily audio publishing pipeline and generalized into a reusable MP3-first publishing layer: whisper-crash-hard-stop, 24h per-platform idempotency, retry with backoff, webhook alerts after exhaustion, caption moderation, and a JSONL decision log designed for an LLM to grep across runs.
 
 **Agents: read [`SKILL.md`](./SKILL.md) first.** It explains when to use each command, what the flags mean, and what NOT to do.
 
@@ -10,7 +10,7 @@ Extracted and open-sourced from the [AudioKids](https://audiokids.org) daily-pub
 
 Narrow on purpose:
 
-- You run a **local MP3-first pipeline** (AudioKids, a home-grown TTS loop, a podcast staging folder, anything that drops `slug.mp3 + slug.json` into a directory) and want a cron-driven autonomous publisher on top of it.
+- You run a **local MP3-first pipeline** (a TTS loop, podcast staging folder, lesson generator, briefing generator, or anything that drops `slug.mp3 + slug.json` into a directory) and want a cron-driven autonomous publisher on top of it.
 - You want the publish layer **self-hosted and open-source**, not a SaaS dashboard. Postiz handles OAuth and scheduling; this agent handles the MP3 → video step and the orchestration.
 - You want an **agent-readable decision log** (`data/decisions.jsonl`) so an LLM can reason across runs without re-hitting platform APIs.
 
@@ -36,7 +36,7 @@ Postiz is a great social scheduler but it's content-agnostic — you hand it a f
                            └─ RSS feed (for Spotify/Apple)
 ```
 
-The story's [input schema](./src/types.ts) is small (title, content, mood, beats, metadata) — adapting a non-AudioKids source is a single-file change in `src/audiokids/reader.ts`.
+The [input schema](./src/types.ts) is small and source-agnostic: `title`, `content`, `mood`, optional `beats`, and `meta`. Legacy aliases such as `titulo` and `contenido` are still accepted for backward compatibility, but the internal contract is generic.
 
 ## What gets published
 
@@ -44,13 +44,13 @@ The story's [input schema](./src/types.ts) is small (title, content, mood, beats
 |---|---|---|
 | **X** | Video | 1:1 · 1080×1080 · up to 4h (Premium) |
 | **TikTok** | Video | 9:16 · 1080×1920 · up to 10min |
-| **Instagram Reels** | Video | 9:16 · 1080×1920 · up to 3min (multi-part for longer cuentos) |
+| **Instagram Reels** | Video | 9:16 · 1080×1920 · up to 3min (multi-part for longer audio) |
 | **YouTube** | Video | 16:9 · 1920×1080 · no limit |
 | **Spotify / Apple / Amazon** | Audio (RSS) | MP3 feed polled hourly |
 
-Each video is a slide-based composition: book-page pacing (15–25 words per slide), current-word highlight, narrator's voice as the audio track. The visual identity is driven by the story's `mood` field (`fantasia`, `aventura`, `calma`, `comedia`, `misterio`, `emocionante`, `naturaleza`) — one HTML template per mood. Today the project ships one template (`fantasia`); all other moods fall back to it with a warning recorded in the decision log.
+Each video is a slide-based composition: page-like pacing (15–25 words per slide), current-word highlight, narrator's voice as the audio track. The visual identity is driven by the content item's `mood` field. Today the project ships one template (`fantasia`); all other moods fall back to it with a warning recorded in the decision log.
 
-Instagram Reels cap at 3 minutes, so cuentos longer than that are **automatically split** into N ≤170s parts, each rendered with a `PARTE i/N` ribbon and scheduled 5 minutes apart so they land in order on your feed.
+Instagram Reels cap at 3 minutes, so longer audio is **automatically split** into N ≤170s parts, each rendered with a `PARTE i/N` ribbon and scheduled 5 minutes apart so they land in order on your feed.
 
 ## Example
 
@@ -59,7 +59,7 @@ A one-minute story becomes four ready-to-upload MP4s with a single command:
 ```
 $ postiz-agent render --slug dragon-marcos --platforms x,tiktok,instagram,youtube
 
-story: "El dragón curioso" (145 words, 1min)
+content: "El dragón curioso" (145 words, 1min)
 transcribing audio...
   118 words → tmp/dragon-marcos/dragon-marcos.json
 → x          dragon-marcos-x.mp4          1080×1080 · 40s · 2.3MB
@@ -80,7 +80,7 @@ cd postiz-agent
 pnpm install
 
 cp .env.example .env
-# edit POSTIZ_API_URL, POSTIZ_API_KEY, AUDIOKIDS_OUTPUT_DIR
+# edit POSTIZ_API_URL, POSTIZ_API_KEY, CONTENT_OUTPUT_DIR
 # (optional) set ALERT_WEBHOOK_URL to get a POST when a platform publish fails
 # (optional) set YOUTUBECLI_PATH if you have a YouTube CLI to delegate to;
 #            leave unset to skip YouTube
@@ -108,7 +108,7 @@ $ postiz-agent status
 ✓ ffprobe installed
 ✓ whisper installed
 ✓ npx installed
-✓ AudioKids output dir   /path/to/audiokids/output
+✓ Content output dir     /path/to/content/output
 ✓ Postiz API reachable   http://localhost:5000/public/v1
 ✓ POSTIZ_API_KEY set     present
 ✓ YouTubeCLI project path /path/to/youtubecli
@@ -120,7 +120,7 @@ Full reference is in the CLI itself (`postiz-agent <cmd> --help`). Short version
 
 | Command | What it does |
 |---|---|
-| `dispatch` | Autonomously pick the next story not yet published and run it. Cron-safe. |
+| `dispatch` | Autonomously pick the next content item not yet published and run it. Cron-safe. |
 | `status` | Env health check — run this first. Reports tooling + Postiz integration health per platform. `--strict` escalates warnings to exit 1. |
 | `integrations` | List connected Postiz accounts |
 | `render --slug <s> --platforms <list>` | Build MP4s, no upload |
@@ -164,7 +164,7 @@ src/
 ├── orchestrator.ts          # loop: story → transcript → publishers → decision log
 ├── config.ts · types.ts
 │
-├── audiokids/reader.ts      # read the story assets from AudioKids output
+├── content/reader.ts        # read MP3, JSON metadata, and cover art from content output
 ├── media/
 │   ├── subtitles.ts         # whisper CLI → word-level JSON (disk-cached)
 │   ├── whisper-json.ts      # parser
@@ -229,7 +229,7 @@ Shipping:
 - Retry with backoff, 24h idempotency guard, webhook alerts, whisper-failure hard stop
 - Caption moderation against a Spanish blocklist
 - `fantasia` mood template (all other moods fall back to it with a warning)
-- Automatic multi-part splitting for IG Reels cuentos > 3 min
+- Automatic multi-part splitting for IG Reels audio > 3 min
 - Whisper transcription with caching
 - Spotify RSS generator (per-episode image, 2-sentence teaser, `SPOTIFY_RSS_EXCLUDE_SLUGS` env)
 - Decision log with CLI query
@@ -238,7 +238,7 @@ Shipping:
 Intentionally not shipping yet:
 - Additional mood templates — `fantasia` covers all moods via fallback. Authoring the other six is deferred by product decision.
 - Engagement ingestion from YouTubeCLI + Postiz back into the decision log (future feedback loop).
-- Automated clip selection ("post the best 30s of a 5min cuento"). Stories run at narration pace on purpose — this is a book, not a song.
+- Automated clip selection ("post the best 30s of a 5min item"). Content runs at narration pace by default; clip selection is a separate product layer.
 - Automatic upload of the Spotify RSS feed + MP3s to R2. `rss` builds `feed.xml`; operator handles the upload.
 
 ## How this compares
@@ -252,11 +252,11 @@ Intentionally not shipping yet:
 
 ## Origin
 
-Extracted from the [AudioKids](https://audiokids.org) toolchain — a Spanish-language AI audio-story publisher that generates a daily cuento and ships it across every relevant social surface — and open-sourced because the reliability scaffolding around multi-platform publishing (retry, idempotency, alerts, caption moderation, whisper-crash hard-stop, decision log) is generic enough to stand alone. AudioKids is the first consumer of this repo; it is not the only one it can serve.
+Extracted from a production audio-publishing toolchain and open-sourced because the reliability scaffolding around multi-platform publishing (retry, idempotency, alerts, caption moderation, whisper-crash hard-stop, decision log) is generic enough to stand alone. The product boundary is the MP3-first package contract, not any one upstream generator.
 
 ## License
 
-[MIT](./LICENSE). Use freely; attribution appreciated. Originally built for [AudioKids](https://audiokids.org) and open-sourced from that codebase.
+[MIT](./LICENSE). Use freely; attribution appreciated.
 
 ---
 

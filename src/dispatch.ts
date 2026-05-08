@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import type { DecisionLogEntry, Platform } from './types.js';
 
 export interface DispatchCandidate {
-  /** Story slug (basename of the AudioKids output files, without extension). */
+  /** Content slug (basename of the source files, without extension). */
   slug: string;
   /** Ordering timestamp in ms since epoch. Prefer meta.generatedAt; fall back to file mtime. */
   generatedAtMs: number;
@@ -17,7 +17,7 @@ const PUBLISHED_WINDOW_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
  * candidate already has a successful publish on every requested platform. Pure
  * function so we can unit-test it with fixture log + candidates.
  */
-export function selectNextStory(
+export function selectNextContent(
   candidates: DispatchCandidate[],
   log: DecisionLogEntry[],
   platforms: Platform[],
@@ -26,38 +26,43 @@ export function selectNextStory(
   if (candidates.length === 0 || platforms.length === 0) return null;
 
   const cutoffMs = now.getTime() - PUBLISHED_WINDOW_MS;
-  const successByStory = new Map<string, Set<Platform>>();
+  const successByContent = new Map<string, Set<Platform>>();
   for (const e of log) {
     if (!e.result?.success) continue;
     const createdMs = Date.parse(e.createdAt);
     if (!Number.isFinite(createdMs) || createdMs < cutoffMs) continue;
-    let set = successByStory.get(e.storySlug);
-    if (!set) { set = new Set(); successByStory.set(e.storySlug, set); }
+    const contentSlug = e.contentSlug ?? e.storySlug;
+    if (!contentSlug) continue;
+    let set = successByContent.get(contentSlug);
+    if (!set) { set = new Set(); successByContent.set(contentSlug, set); }
     set.add(e.platform);
   }
 
   const sorted = [...candidates].sort((a, b) => a.generatedAtMs - b.generatedAtMs);
   for (const c of sorted) {
-    const published = successByStory.get(c.slug) ?? new Set<Platform>();
+    const published = successByContent.get(c.slug) ?? new Set<Platform>();
     const pending = platforms.some(p => !published.has(p));
     if (pending) return c.slug;
   }
   return null;
 }
 
+/** Backward-compatible export name. Prefer selectNextContent. */
+export const selectNextStory = selectNextContent;
+
 /**
- * Walk the AudioKids output dir for *.json + *.mp3 pairs. Returns one candidate
+ * Walk the content output dir for *.json + *.mp3 pairs. Returns one candidate
  * per complete pair with the best-available generation timestamp.
  */
-export function listCandidates(audiokidsDir: string): DispatchCandidate[] {
-  if (!existsSync(audiokidsDir)) return [];
-  const files = readdirSync(audiokidsDir).filter(f => f.endsWith('.json') && !f.startsWith('.'));
+export function listCandidates(contentDir: string): DispatchCandidate[] {
+  if (!existsSync(contentDir)) return [];
+  const files = readdirSync(contentDir).filter(f => f.endsWith('.json') && !f.startsWith('.'));
   const out: DispatchCandidate[] = [];
   for (const jsonFile of files) {
     const slug = jsonFile.replace(/\.json$/, '');
-    const mp3Path = join(audiokidsDir, `${slug}.mp3`);
+    const mp3Path = join(contentDir, `${slug}.mp3`);
     if (!existsSync(mp3Path)) continue;
-    const jsonPath = join(audiokidsDir, jsonFile);
+    const jsonPath = join(contentDir, jsonFile);
     let generatedAtMs = statSync(jsonPath).mtimeMs;
     try {
       const raw = JSON.parse(readFileSync(jsonPath, 'utf-8')) as { meta?: { generatedAt?: string } };

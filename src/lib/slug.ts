@@ -2,7 +2,7 @@
  * Story slugs are used to build file paths and URLs. A malicious slug could
  * traverse out of the intended directory (`../../../etc/passwd`) or inject
  * characters that break downstream tooling. We accept only a conservative
- * lowercase-with-hyphens format that matches what AudioKids actually emits.
+ * lowercase-with-hyphens format that maps cleanly to local files and URLs.
  */
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,79}$/;
 

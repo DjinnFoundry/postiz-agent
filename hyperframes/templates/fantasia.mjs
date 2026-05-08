@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * fantasia mood — warm parchment background, Fraunces serif, book-page pacing.
+ * fantasia mood: warm parchment background, Fraunces serif, book-page pacing.
  * Input (via stdin, JSON):
  *   { title, byline, words, audioSrc, width, height }
  * Output: writes to <cwd>/index.html
@@ -16,7 +16,7 @@ const PALETTE = {
 };
 
 const story = await readStoryFromStdin();
-const { title, byline, words, audioSrc, width, height } = story;
+const { title, byline, brand = 'Postiz Agent', words, audioSrc, width, height } = story;
 
 const pages = buildPages(words);
 const audioDuration = words.at(-1).end;
@@ -121,7 +121,7 @@ const html = `<!doctype html>
     <div class="clip bg" data-start="0" data-duration="${total.toFixed(2)}" data-track-index="0"></div>
 
     <div class="clip intro" data-start="0" data-duration="${HEAD_SEC}" data-track-index="1">
-      <div class="kicker">un cuento de audiokids</div>
+      <div class="kicker">${escHtml(brand)}</div>
       <div class="title">${escHtml(title)}</div>
       <div class="byline">${escHtml(byline)}</div>
       ${renderPartRibbon(story)}
@@ -131,7 +131,7 @@ const html = `<!doctype html>
 
 ${pageBlocks}
 
-    <div class="clip brand" data-start="0" data-duration="${total.toFixed(2)}" data-track-index="3">audiokids · cuentos con corazón</div>
+    <div class="clip brand" data-start="0" data-duration="${total.toFixed(2)}" data-track-index="3">${escHtml(brand)}</div>
   </div>
 
   <script>

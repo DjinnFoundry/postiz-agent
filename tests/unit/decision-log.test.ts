@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from 'vitest';
-import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { DecisionLog } from '../../src/decisions/log.js';
@@ -25,7 +25,7 @@ describe('DecisionLog', () => {
   it('records an entry and appends it to the file', async () => {
     const entry = await log.record({
       action: 'publish.x',
-      storySlug: 'dragon-marcos',
+      contentSlug: 'dragon-marcos',
       platform: 'x',
       reason: 'test',
       result: result('x'),
@@ -33,25 +33,42 @@ describe('DecisionLog', () => {
     expect(entry.id).toBeDefined();
     expect(existsSync(logPath)).toBe(true);
     const fileContent = readFileSync(logPath, 'utf-8').trim();
-    expect(JSON.parse(fileContent)).toMatchObject({ action: 'publish.x', storySlug: 'dragon-marcos' });
+    expect(JSON.parse(fileContent)).toMatchObject({ action: 'publish.x', contentSlug: 'dragon-marcos' });
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('filters list by storySlug', async () => {
-    await log.record({ action: 'publish.x', storySlug: 'a', platform: 'x', reason: '', result: result('x') });
-    await log.record({ action: 'publish.x', storySlug: 'b', platform: 'x', reason: '', result: result('x') });
-    const onlyA = log.list({ storySlug: 'a' });
+  it('filters list by contentSlug', async () => {
+    await log.record({ action: 'publish.x', contentSlug: 'a', platform: 'x', reason: '', result: result('x') });
+    await log.record({ action: 'publish.x', contentSlug: 'b', platform: 'x', reason: '', result: result('x') });
+    const onlyA = log.list({ contentSlug: 'a' });
     expect(onlyA).toHaveLength(1);
-    expect(onlyA[0].storySlug).toBe('a');
+    expect(onlyA[0].contentSlug).toBe('a');
     rmSync(dir, { recursive: true, force: true });
   });
 
   it('filters list by platform', async () => {
-    await log.record({ action: 'publish.x', storySlug: 's', platform: 'x', reason: '', result: result('x') });
-    await log.record({ action: 'publish.tiktok', storySlug: 's', platform: 'tiktok', reason: '', result: result('tiktok') });
+    await log.record({ action: 'publish.x', contentSlug: 's', platform: 'x', reason: '', result: result('x') });
+    await log.record({ action: 'publish.tiktok', contentSlug: 's', platform: 'tiktok', reason: '', result: result('tiktok') });
     const onlyTiktok = log.list({ platform: 'tiktok' });
     expect(onlyTiktok).toHaveLength(1);
     expect(onlyTiktok[0].platform).toBe('tiktok');
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('normalizes legacy entries that only have storySlug', () => {
+    writeFileSync(logPath, JSON.stringify({
+      id: 'legacy',
+      action: 'publish.x',
+      storySlug: 'old-slug',
+      platform: 'x',
+      reason: '',
+      result: result('x'),
+      createdAt: new Date().toISOString(),
+    }) + '\n');
+
+    const entries = log.list({ contentSlug: 'old-slug' });
+    expect(entries).toHaveLength(1);
+    expect(entries[0].contentSlug).toBe('old-slug');
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -66,7 +83,7 @@ describe('DecisionLog', () => {
     const writes = Array.from({ length: N }, (_, i) =>
       log.record({
         action: `publish.x`,
-        storySlug: `slug-${i}`,
+        contentSlug: `slug-${i}`,
         platform: 'x',
         reason: '',
         result: result('x'),
@@ -75,7 +92,7 @@ describe('DecisionLog', () => {
     await Promise.all(writes);
     const entries = log.list();
     expect(entries).toHaveLength(N);
-    const slugs = new Set(entries.map(e => e.storySlug));
+    const slugs = new Set(entries.map(e => e.contentSlug));
     expect(slugs.size).toBe(N);
     // Each line should be valid JSON on its own
     const lines = readFileSync(logPath, 'utf-8').split('\n').filter(Boolean);

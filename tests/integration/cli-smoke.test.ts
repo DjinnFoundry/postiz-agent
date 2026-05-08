@@ -50,7 +50,7 @@ describe('CLI smoke: status --json', () => {
       'ffmpeg installed',
       'ffprobe installed',
       'npx installed',
-      'AudioKids output dir',
+      'Content output dir',
     ]));
     for (const c of checks as Array<{ ok: boolean; required: boolean }>) {
       expect(typeof c.ok).toBe('boolean');

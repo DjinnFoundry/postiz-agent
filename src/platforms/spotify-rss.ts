@@ -30,7 +30,7 @@ export interface EpisodeItem {
 export class SpotifyRssBuilder {
   constructor(
     private readonly channel: PodcastChannelMeta,
-    private readonly audiokidsDir: string = config.audiokids.outputDir,
+    private readonly contentDir: string = config.content.outputDir,
     private readonly publicFeedBase: string = config.spotify.publicFeedUrl.replace(/\/feed\.xml$/, ''),
     private readonly excludeSlugs: Set<string> = parseExcludes(process.env.SPOTIFY_RSS_EXCLUDE_SLUGS),
     private readonly probeDuration: (mp3Path: string) => Promise<number> = probeDurationSec,
@@ -43,17 +43,17 @@ export class SpotifyRssBuilder {
   }
 
   private async collectEpisodes(): Promise<EpisodeItem[]> {
-    if (!existsSync(this.audiokidsDir)) return [];
-    const files = readdirSync(this.audiokidsDir).filter(f => f.endsWith('.json') && !f.startsWith('.'));
+    if (!existsSync(this.contentDir)) return [];
+    const files = readdirSync(this.contentDir).filter(f => f.endsWith('.json') && !f.startsWith('.'));
     const episodes: EpisodeItem[] = [];
 
     for (const jsonFile of files) {
       const slug = jsonFile.replace(/\.json$/, '');
       if (this.excludeSlugs.has(slug)) continue;
-      const mp3Path = join(this.audiokidsDir, `${slug}.mp3`);
+      const mp3Path = join(this.contentDir, `${slug}.mp3`);
       if (!existsSync(mp3Path)) continue;
 
-      const raw = JSON.parse(readFileSync(join(this.audiokidsDir, jsonFile), 'utf-8'));
+      const raw = JSON.parse(readFileSync(join(this.contentDir, jsonFile), 'utf-8'));
       let story: Story;
       try { story = StorySchema.parse(raw); } catch { continue; }
 
@@ -64,12 +64,12 @@ export class SpotifyRssBuilder {
       // (unstable, would reorder feed + re-notify subscribers on any file touch).
       const pubSource = story.meta.generatedAt
         ? new Date(story.meta.generatedAt)
-        : new Date(statSync(join(this.audiokidsDir, jsonFile)).mtimeMs);
+        : new Date(statSync(join(this.contentDir, jsonFile)).mtimeMs);
 
       episodes.push({
         slug,
-        title: story.titulo,
-        description: buildTeaser(story.contenido),
+        title: story.title,
+        description: buildTeaser(story.content),
         audioUrl: `${this.publicFeedBase}/audio/${slug}.mp3`,
         imageUrl: `${this.publicFeedBase}/covers/${slug}.png`,
         durationSec: Math.round(duration),
@@ -128,11 +128,11 @@ function parseExcludes(raw: string | undefined): Set<string> {
 }
 
 /**
- * Teaser description: first two sentences of `contenido`. If sentence-split
+ * Teaser description: first two sentences of `content`. If sentence-split
  * yields too little text (< 20 chars), fall back to the first 300 characters.
  */
-export function buildTeaser(contenido: string): string {
-  const trimmed = contenido.trim();
+export function buildTeaser(content: string): string {
+  const trimmed = content.trim();
   if (!trimmed) return '';
   const sentences = splitSentences(trimmed).slice(0, 2).join(' ').trim();
   if (sentences.length >= 20) return sentences;

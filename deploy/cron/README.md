@@ -1,6 +1,6 @@
 # Scheduling `postiz-agent dispatch`
 
-`dispatch` is the autonomous entry point: it picks the oldest AudioKids story that
+`dispatch` is the autonomous entry point: it picks the oldest content item that
 has not yet been fully published to all target platforms in the last 30 days, then
 drives the pipeline end-to-end. It exits 0 with `{"dispatched": false, "reason":
 "nothing pending"}` when there is nothing to do, so running it more often than your
@@ -39,7 +39,7 @@ Wants=postiz-agent.timer
 
 [Service]
 Type=oneshot
-User=audiokids
+User=postizagent
 WorkingDirectory=/opt/postiz-agent
 ExecStart=/usr/local/bin/pnpm dev dispatch --platforms x,tiktok,instagram,youtube --json
 StandardOutput=append:/opt/postiz-agent/data/cron.log

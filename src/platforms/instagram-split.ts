@@ -24,7 +24,7 @@ const DEFAULT_MAX_PART = 170;
 const DEFAULT_SNAP_WINDOW = 10;
 
 /**
- * Splits a cuento whose audio exceeds the IG Reels limit into ordered parts.
+ * Splits audio that exceeds the IG Reels limit into ordered parts.
  *
  * Strategy (pure, side-effect-free):
  *   1. Compute the minimum number of parts N such that ceil(audioDuration / N) <= maxPart.

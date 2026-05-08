@@ -14,8 +14,13 @@ export const config = {
     apiUrl: optional('POSTIZ_API_URL', 'http://localhost:5000/public/v1'),
     apiKey: optional('POSTIZ_API_KEY'),
   },
-  audiokids: {
-    outputDir: optional('AUDIOKIDS_OUTPUT_DIR', resolve(__dirname, '..', '..', 'audiokids', 'output')),
+  content: {
+    outputDir: optional(
+      'CONTENT_OUTPUT_DIR',
+      resolve(__dirname, '..', '..', 'content', 'output'),
+    ),
+    brand: optional('CONTENT_BRAND', 'Postiz Agent'),
+    defaultLocale: optional('CONTENT_DEFAULT_LOCALE', 'es-ES'),
   },
   youtubecli: {
     path: optional('YOUTUBECLI_PATH', resolve(__dirname, '..', '..', 'youtubecli')),

@@ -6,7 +6,7 @@ function mkEntry(over: Partial<DecisionLogEntry>): DecisionLogEntry {
   return {
     id: 'id',
     action: 'publish.tiktok',
-    storySlug: 'dragon-marcos',
+    contentSlug: 'dragon-marcos',
     platform: 'tiktok',
     reason: 'test',
     createdAt: new Date().toISOString(),
@@ -58,7 +58,7 @@ describe('wasRecentlyPublished()', () => {
 
   it('ignores entries from other stories and platforms', () => {
     const entries = [
-      mkEntry({ storySlug: 'other-story' }),
+      mkEntry({ contentSlug: 'other-story' }),
       mkEntry({ platform: 'x' }),
     ];
     expect(wasRecentlyPublished(entries, 'dragon-marcos', 'tiktok', NOW).recent).toBe(false);

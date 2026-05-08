@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { config } from '../config.js';
 import { run } from '../lib/process.js';
 import type { StoryAssets } from '../types.js';
+import { brandFor, tagsFor } from './copy.js';
 
 export interface YoutubeUploadInput {
   videoPath: string;
@@ -47,12 +48,21 @@ export class YoutubeAdapter {
 
   buildDescription(assets: StoryAssets): string {
     const m = assets.metadata;
-    const vocab = m.vocabularioNuevo?.length ? `\n\nVocabulario nuevo: ${m.vocabularioNuevo.join(', ')}` : '';
+    const vocab = m.vocabulary?.length ? `\n\nVocabulary: ${m.vocabulary.join(', ')}` : '';
+    const audience = describeAudience(m.meta);
     return (
-      `${m.contenido.slice(0, 300).trim()}...\n\n` +
-      `Un audiocuento de AudioKids para ${m.meta.name} (${m.meta.age} años).\n` +
-      `Género: ${m.mood} · Duración: ~${m.meta.estimatedDurationMin} min${vocab}\n\n` +
-      `#audiocuentos #cuentosinfantiles #${m.mood}`
+      `${m.content.slice(0, 300).trim()}...\n\n` +
+      `${brandFor(assets)}${audience}.\n` +
+      `Mood: ${m.mood} · Duration: ~${m.meta.estimatedDurationMin} min${vocab}\n\n` +
+      tagsFor(assets, ['audio', 'storytelling']).map(t => `#${t.replace(/[^\p{L}\p{N}_-]+/gu, '')}`).join(' ')
     );
   }
+}
+
+function describeAudience(meta: Record<string, unknown>): string {
+  const name = typeof meta.audienceName === 'string' && meta.audienceName.trim()
+    ? ` for ${meta.audienceName.trim()}`
+    : '';
+  const age = typeof meta.audienceAge === 'number' ? ` (${meta.audienceAge} years old)` : '';
+  return `${name}${age}`;
 }

@@ -3,13 +3,13 @@ import type { DecisionLogEntry, Platform } from './types.js';
 const DEFAULT_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 /**
- * Has the given story already been successfully published to the given platform
+ * Has the given content item already been successfully published to the given platform
  * within the lookback window? Pure function; the orchestrator feeds it the
  * decision log entries so it can be unit-tested without touching disk.
  */
 export function wasRecentlyPublished(
   entries: DecisionLogEntry[],
-  storySlug: string,
+  contentSlug: string,
   platform: Platform,
   now: Date = new Date(),
   windowMs: number = DEFAULT_WINDOW_MS,
@@ -19,7 +19,8 @@ export function wasRecentlyPublished(
   for (let i = entries.length - 1; i >= 0; i--) {
     const e = entries[i];
     if (!e) continue;
-    if (e.storySlug !== storySlug || e.platform !== platform) continue;
+    const entrySlug = e.contentSlug ?? e.storySlug;
+    if (entrySlug !== contentSlug || e.platform !== platform) continue;
     if (!e.result?.success) continue;
     // Skip entries whose result was itself a skip (don't double-skip forever).
     if (e.result.skipped) continue;

@@ -5,6 +5,7 @@ import { PostizClient } from './postiz.js';
 import { probeDurationSec } from '../lib/ffprobe.js';
 import { splitIntoParts, type PartSpec } from './instagram-split.js';
 import type { Platform, PublishResult, StoryAssets } from '../types.js';
+import { brandFor, hashtagsFor } from './copy.js';
 
 /** Instagram Reels maximum video length (seconds). */
 const IG_REELS_MAX_SEC = 180;
@@ -12,7 +13,7 @@ const IG_REELS_MAX_SEC = 180;
 const PART_STAGGER_MINUTES = 5;
 
 /**
- * Instagram has a 3-minute Reels cap. For cuentos below that limit this behaves
+ * Instagram has a 3-minute Reels cap. For content below that limit this behaves
  * exactly like the shared PostizVideoPublisher. Above it, `publish()` splits the
  * audio into ≤170s windows (aligned to beats when possible), renders one video
  * per part, and uploads each with "· Parte i de N" appended to the caption plus
@@ -116,8 +117,7 @@ export class InstagramPublisher extends PostizVideoPublisher {
   }
 
   protected buildCaption(assets: StoryAssets, part?: PartSpec): string {
-    const { titulo, mood, contenido } = assets.metadata;
     const suffix = part ? ` · Parte ${part.partIndex} de ${part.partTotal}` : '';
-    return `"${titulo}"${suffix} · un audiocuento de AudioKids\n\n${contenido.slice(0, 160)}...\n\n#audiocuentos #${mood} #cuentosinfantiles`;
+    return `"${assets.metadata.title}"${suffix} · ${brandFor(assets)}\n\n${assets.metadata.content.slice(0, 160)}...\n\n${hashtagsFor(assets, ['storytelling', 'audio'])}`;
   }
 }
