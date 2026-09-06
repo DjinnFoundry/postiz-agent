@@ -1,4 +1,5 @@
 import type { DecisionLogEntry, Platform, PublishResult } from './types.js';
+import { wasRecentlyPublished } from './idempotency.js';
 
 export interface DispatchCandidate {
   /** Story slug (basename of the AudioKids output files, without extension). */
@@ -8,7 +9,7 @@ export interface DispatchCandidate {
 }
 
 /** Lookback window for "already successfully published" idempotency. */
-const PUBLISHED_WINDOW_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+export const PUBLISHED_WINDOW_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 /** Lookback window for counting permanent failures per slug. */
 const FAILURE_WINDOW_MS = 72 * 60 * 60 * 1000; // 72 hours
 /** Max permanent failures per slug in FAILURE_WINDOW_MS before we stop trying. */
@@ -27,7 +28,7 @@ const TRANSIENT_BACKOFF_LADDER_MS = [
 export interface StuckSlugInfo {
   slug: string;
   platform: Platform;
-  reason: 'too-many-permanent-failures' | 'within-transient-backoff';
+  reason: 'too-many-permanent-failures' | 'within-transient-backoff' | 'publication-outcome-unknown';
   permanentCount?: number;
   lastFailureAt?: string;
   nextEligibleAt?: string;
@@ -75,6 +76,14 @@ export function findStuckSlugs(
 
   for (const [key, entries] of byKey) {
     const [slug, platform] = key.split('::') as [string, Platform];
+    // An accepted-but-unconfirmed POST must never be retried on a timer.
+    // Only an explicit reset after reconciling the provider clears it.
+    const uncertain = entries.find(e => e.result?.remediation?.action === 'reconcile-post');
+    if (uncertain) {
+      out.push({ slug, platform, reason: 'publication-outcome-unknown', lastFailureAt: uncertain.createdAt,
+        lastRemediation: uncertain.result.remediation });
+      continue;
+    }
     const recent = entries
       .filter(e => {
         const t = Date.parse(e.createdAt);
@@ -136,29 +145,25 @@ export function selectNextStory(
 ): string | null {
   if (candidates.length === 0 || platforms.length === 0) return null;
 
-  const publishedCutoffMs = now.getTime() - PUBLISHED_WINDOW_MS;
-  const successByStory = new Map<string, Set<Platform>>();
-  for (const e of log) {
-    if (!e.result?.success) continue;
-    const createdMs = Date.parse(e.createdAt);
-    if (!Number.isFinite(createdMs) || createdMs < publishedCutoffMs) continue;
-    let set = successByStory.get(e.storySlug);
-    if (!set) { set = new Set(); successByStory.set(e.storySlug, set); }
-    set.add(e.platform);
-  }
-
-  const stuck = findStuckSlugs(log, platforms, now);
-  const stuckByKey = new Set(stuck.map(s => `${s.slug}::${s.platform}`));
-
   const sorted = [...candidates].sort((a, b) => a.generatedAtMs - b.generatedAtMs);
   for (const c of sorted) {
-    const published = successByStory.get(c.slug) ?? new Set<Platform>();
-    const pending = platforms.filter(p => !published.has(p));
-    if (pending.length === 0) continue;
-    const blocked = pending.every(p => stuckByKey.has(`${c.slug}::${p}`));
-    if (blocked) continue;
-    return c.slug;
+    if (selectPendingPlatforms(log, c.slug, platforms, now).length) return c.slug;
   }
   return null;
 }
 
+/** The exact targets a dispatch may attempt; shared by selection, CLI and daemon. */
+export function selectPendingPlatforms(
+  log: DecisionLogEntry[],
+  slug: string,
+  platforms: Platform[],
+  now: Date = new Date(),
+): Platform[] {
+  const history = log.filter(e => e.storySlug === slug);
+  const blocked = new Set(findStuckSlugs(history, platforms, now).map(s => s.platform));
+  return [...new Set(platforms)].filter(platform =>
+    // Spotify consumes the separately rebuilt RSS feed; there is no per-story upload.
+    platform !== 'spotify' && !blocked.has(platform)
+    && !wasRecentlyPublished(history, slug, platform, now, PUBLISHED_WINDOW_MS).recent,
+  );
+}

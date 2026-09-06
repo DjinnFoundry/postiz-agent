@@ -2,6 +2,7 @@ import type { PublishContext } from './base.js';
 import { VideoPublisher } from './base.js';
 import { PostizClient } from './postiz.js';
 import { buildCaptionRich } from '../copy/caption-builder.js';
+import { SlideVideoBuilder } from '../media/slide-video.js';
 import type { PublishResult } from '../types.js';
 
 /**
@@ -12,8 +13,17 @@ import type { PublishResult } from '../types.js';
  * captions without media.
  */
 export abstract class PostizVideoPublisher extends VideoPublisher {
-  constructor(protected readonly postiz: PostizClient = new PostizClient()) {
-    super();
+  private client?: PostizClient;
+
+  constructor(
+    private readonly postizSource: PostizClient | (() => PostizClient) = () => new PostizClient(),
+    slides?: SlideVideoBuilder,
+  ) {
+    super(slides);
+  }
+
+  protected get postiz(): PostizClient {
+    return this.client ??= typeof this.postizSource === 'function' ? this.postizSource() : this.postizSource;
   }
 
   protected async upload(mediaPath: string | null, ctx: PublishContext): Promise<Partial<PublishResult>> {
@@ -22,6 +32,7 @@ export abstract class PostizVideoPublisher extends VideoPublisher {
     const posted = await this.postiz.createPost({
       platform: this.platform,
       integrationId: integration.id,
+      providerIdentifier: integration.providerIdentifier,
       text: rich.caption,
       ...(mediaPath ? { videoPath: mediaPath } : {}),
     });

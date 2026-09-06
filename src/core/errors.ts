@@ -102,6 +102,18 @@ export function classifyError(err: unknown, opts: { origin?: ErrorOrigin } = {})
   const message = anyErr.message ?? String(err);
   const code = anyErr.code;
 
+  // A create request can be accepted even when its response is lost. Repeating
+  // it is unsafe until the operator has reconciled the Postiz queue.
+  if (code === 'POSTIZ_PUBLISH_UNCERTAIN' || code === 'YOUTUBE_PUBLISH_UNCERTAIN') {
+    return {
+      kind: 'needs-human', origin: code === 'YOUTUBE_PUBLISH_UNCERTAIN' ? 'youtube-cli' : 'postiz', message, retryable: false,
+      remediation: {
+        action: 'reconcile-post',
+        humanHint: 'Check the publishing queue and target account before retrying; the post may already have been accepted.',
+      },
+    };
+  }
+
   // ─── Network layer ──────────────────────────────────────────────────────
   if (code && NETWORK_CODES.has(code)) {
     return {

@@ -50,7 +50,8 @@ Examples:
 
       if (opts.resetAttempts) {
         const slug = validateSlug(opts.resetAttempts);
-        const history = log.list({ storySlug: slug });
+        const platform = opts.platform === undefined ? undefined : PlatformSchema.parse(opts.platform);
+        const history = log.list({ storySlug: slug, platform, includeArchives: true });
         const platforms = new Set<Platform>(history.map(h => h.platform));
         const ts = new Date().toISOString();
         for (const platform of platforms) {
@@ -67,7 +68,7 @@ Examples:
       }
 
       if (opts.stuck) {
-        const all = log.list({});
+        const all = log.list({ includeArchives: true });
         const platforms = (Object.values(PlatformSchema.enum)) as Platform[];
         const stuck = findStuckSlugs(all, platforms);
         if (opts.json) printJson(stuck);
@@ -77,7 +78,7 @@ Examples:
       }
 
       const slug = opts.slug ? validateSlug(opts.slug) : undefined;
-      const entries = log.list({ storySlug: slug, platform: opts.platform, runId: opts.runId });
+      const entries = log.list({ storySlug: slug, platform: opts.platform, runId: opts.runId, includeArchives: true });
       if (opts.pretty) console.log(JSON.stringify(entries, null, 2));
       else for (const e of entries) console.log(JSON.stringify(e));
     });
@@ -89,7 +90,8 @@ Examples:
     .option('--json', 'emit machine-readable JSON', false)
     .action(function (this: Command, opts: { force?: boolean; json?: boolean }) {
       const json = opts.json || this.optsWithGlobals().json;
-      const log = new DecisionLog();
+      const tenant = loadTenant(this.optsWithGlobals().tenant);
+      const log = new DecisionLog(tenant.paths.decisionsLog);
       if (!opts.force && !log.shouldRotate()) {
         const payload = { rotated: false, reason: 'under threshold; pass --force to rotate anyway' };
         if (json) printJson(payload);
@@ -109,7 +111,8 @@ Examples:
     .option('--json', 'emit machine-readable JSON', false)
     .action(function (this: Command, opts: { json?: boolean }) {
       const json = opts.json || this.optsWithGlobals().json;
-      const log = new DecisionLog();
+      const tenant = loadTenant(this.optsWithGlobals().tenant);
+      const log = new DecisionLog(tenant.paths.decisionsLog);
       const archives = log.listArchives();
       if (json) {
         printJson(archives);

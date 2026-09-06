@@ -79,7 +79,15 @@ function preflightText(platform: Platform): PreflightResult {
   return { ok: true };
 }
 
-function preflightImage(bundle: ContentBundle, _platform: Platform): PreflightResult {
+function preflightImage(bundle: ContentBundle, platform: Platform): PreflightResult {
+  if (platform === 'youtube') {
+    return {
+      ok: false,
+      reason: 'youtube requires a video; image-post cannot be uploaded through YouTubeCLI',
+      kind: 'permanent',
+      hint: 'provide a video bundle or drop youtube from --platforms',
+    };
+  }
   if (!bundle.primaryMedia) {
     return {
       ok: false,

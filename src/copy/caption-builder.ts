@@ -63,6 +63,7 @@ export function buildCaption(opts: CaptionBuildOptions): string {
  */
 export function buildCaptionRich(opts: CaptionBuildOptions): CaptionBuildResult {
   const { bundle, platform, brand } = opts;
+  if (bundle.kind !== 'audio-story') return buildProductCaption(opts);
   const brandName = brand?.name ?? DEFAULT_BRAND_NAME;
   const tagline = taglineForRecipient(bundle.recipient);
   const hashtags = opts.hashtags ?? deriveBrandedHashtags(bundle, brand);
@@ -93,6 +94,23 @@ export function buildCaptionRich(opts: CaptionBuildOptions): CaptionBuildResult 
     teaser,
     hashtags,
   };
+}
+
+/** Text, image and ready-made video bundles already contain their publish copy. */
+function buildProductCaption(opts: CaptionBuildOptions): CaptionBuildResult {
+  const { bundle, platform, brand } = opts;
+  const body = redactName(bundle.text.body, bundle.recipient).trim();
+  const title = redactName(bundle.text.title ?? '', bundle.recipient).trim();
+  const hashtags = opts.hashtags ?? brand?.hashtags ?? [];
+  const ctaVariant = opts.cta == null && brand?.ctas?.[platform]?.length
+    ? pickBrandedCta(platform, bundle.id, primaryLocale(bundle.locale), brand)
+    : null;
+  const cta = (opts.cta ?? ctaVariant?.text ?? '').trim();
+  const caption = platform === 'spotify' ? '' : [title, body, cta, formatHashtagLine(hashtags)].filter(Boolean).join('\n\n');
+  if (caption.length > LENGTH_CAP[platform]) {
+    throw new Error(`${platform} caption exceeds ${LENGTH_CAP[platform]} characters; shorten the supplied copy before publishing`);
+  }
+  return { caption, ctaVariantId: ctaVariant?.id ?? null, teaser: body, hashtags };
 }
 
 function deriveBrandedHashtags(bundle: ContentBundle, brand: BrandContext | undefined): string[] {

@@ -50,6 +50,8 @@ export interface StatusInput {
   decisions?: DecisionLogEntry[];
   audiokidsDir?: string;
   postizApiKey?: string;
+  postizApiUrl?: string;
+  youtubecliPath?: string;
   listIntegrations?: () => Promise<PostizIntegration[]>;
   uploadCache?: { count: number; oldestUploadedAt: string | null; exists: boolean };
   themeDecisions?: { count: number; exists: boolean };
@@ -65,7 +67,9 @@ export async function runStatus(input: StatusInput = {}): Promise<StatusReport> 
   const decisions = input.decisions ?? new DecisionLog().list();
   const audiokidsDir = input.audiokidsDir ?? config.audiokids.outputDir;
   const postizApiKey = input.postizApiKey ?? config.postiz.apiKey;
-  const listIntegrations = input.listIntegrations ?? (() => new PostizClient().listIntegrations());
+  const postizApiUrl = input.postizApiUrl ?? config.postiz.apiUrl;
+  const youtubecliPath = input.youtubecliPath ?? config.youtubecli.path;
+  const listIntegrations = input.listIntegrations ?? (() => new PostizClient(postizApiUrl, postizApiKey).listIntegrations());
   const uploadCache = input.uploadCache ?? new UploadCache().summarize();
   const themeDecisions = input.themeDecisions ?? new ThemeDecisionStore().summarize();
   const toolNames = input.toolNames ?? createDefaultRegistry().names();
@@ -75,11 +79,11 @@ export async function runStatus(input: StatusInput = {}): Promise<StatusReport> 
   const deps: StatusCheck[] = [];
   deps.push(...await binChecks());
   deps.push(...buildAudiokidsDepChecks(audiokidsDir));
-  deps.push(...await buildPostizDepChecks(postizApiKey, listIntegrations));
+  deps.push(...await buildPostizDepChecks(postizApiKey, postizApiUrl, listIntegrations));
   deps.push({
     label: 'YouTubeCLI project path',
-    ok: existsSync(config.youtubecli.path),
-    detail: config.youtubecli.path,
+    ok: existsSync(youtubecliPath),
+    detail: youtubecliPath,
     required: false,
   });
 
@@ -162,26 +166,29 @@ function buildAudiokidsDepChecks(akDir: string): StatusCheck[] {
 
 async function buildPostizDepChecks(
   apiKey: string,
+  apiUrl: string,
   listIntegrations: () => Promise<PostizIntegration[]>,
 ): Promise<StatusCheck[]> {
   const out: StatusCheck[] = [];
   try {
-    const res = await fetch(`${config.postiz.apiUrl.replace(/\/public\/v1$/, '')}/`, {
+    const res = await fetch(`${apiUrl.replace(/\/(?:api\/)?public\/v1\/?$/, '')}/`, {
       method: 'GET',
       signal: AbortSignal.timeout(15000),
     });
     out.push({
       label: 'Postiz API reachable',
-      ok: true,
-      detail: `${config.postiz.apiUrl} (HTTP ${res.status})`,
+      ok: res.ok,
+      warning: !res.ok,
+      detail: `${apiUrl} (HTTP ${res.status})`,
       required: false,
     });
   } catch (err) {
     out.push({
       label: 'Postiz API reachable',
       ok: false,
-      detail: `${config.postiz.apiUrl} · ${err instanceof Error ? err.message : err}`,
+      detail: `${apiUrl} · ${err instanceof Error ? err.message : err}`,
       required: false,
+      warning: true,
     });
   }
 
@@ -193,7 +200,7 @@ async function buildPostizDepChecks(
   });
 
   if (apiKey) {
-    const probe = await probePostizIntegrations(apiKey, listIntegrations);
+    const probe = await probePostizIntegrations(apiKey, listIntegrations, apiUrl);
     if (probe.kind === 'unreachable') {
       out.push({ label: 'Postiz integrations', ok: false, detail: `could not query: ${probe.message}`, required: false, warning: true });
     } else if (probe.kind === 'ok') {

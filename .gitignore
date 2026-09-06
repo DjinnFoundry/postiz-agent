@@ -29,3 +29,4 @@ hyperframes/.work/
 # deploy: never commit Postiz runtime state
 deploy/postiz-data/
 deploy/.env
+.gstack/

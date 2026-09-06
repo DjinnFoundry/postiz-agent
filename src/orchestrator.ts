@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { config } from './config.js';
@@ -10,7 +10,9 @@ import type { PlatformPublisher, PublishContext } from './platforms/base.js';
 import { DecisionLog } from './decisions/log.js';
 import { retry, isTransientError } from './lib/retry.js';
 import { notifyFailure } from './lib/alerts.js';
-import { wasRecentlyPublished } from './idempotency.js';
+import { wasRecentlyPublished, completedPublicationParts } from './idempotency.js';
+import { PUBLISHED_WINDOW_MS, findStuckSlugs } from './dispatch.js';
+import { validateSlug } from './lib/slug.js';
 import { moderateWords } from './media/caption-moderation.js';
 import type { ContentBundle } from './core/content-bundle.js';
 import { ContentBundleSchema, getWordCount, getEstimatedDurationMin } from './core/content-bundle.js';
@@ -59,6 +61,8 @@ export interface OrchestratorDeps {
   decisions?: DecisionLog;
   getPublisher?: (platform: Platform) => PlatformPublisher;
   preflight?: (bundle: ContentBundle, platform: Platform) => Promise<PreflightResult>;
+  workDir?: string;
+  alertWebhookUrl?: string;
 }
 
 /**
@@ -74,6 +78,9 @@ export class Orchestrator {
   private readonly decisions: DecisionLog;
   private readonly getPublisher: (platform: Platform) => PlatformPublisher;
   private readonly preflight: (bundle: ContentBundle, platform: Platform) => Promise<PreflightResult>;
+  private readonly workDir: string;
+  private readonly alertWebhookUrl: string;
+  private retainPublishLock = false;
 
   constructor(deps: OrchestratorDeps = {}) {
     if (deps.adapters) {
@@ -86,23 +93,49 @@ export class Orchestrator {
     this.decisions = deps.decisions ?? new DecisionLog();
     this.getPublisher = deps.getPublisher ?? defaultGetPublisher;
     this.preflight = deps.preflight ?? preflightPlatform;
+    this.workDir = deps.workDir ?? config.paths.tmpDir;
+    this.alertWebhookUrl = deps.alertWebhookUrl ?? config.alerts.webhookUrl;
   }
 
   async publish(opts: PublishOptions): Promise<PublishReport> {
     const runId = randomUUID();
     const bundle = this.resolveBundle(opts);
+    validateSlug(bundle.id);
+    const platforms = [...new Set(opts.platforms)];
+    if (!platforms.length) throw new Error('publish: at least one platform is required');
+    const release = this.decisions.acquirePublishLock();
+    this.retainPublishLock = false;
+    try {
+      return await this.publishBundle({ ...opts, platforms }, bundle, runId);
+    } finally {
+      if (!this.retainPublishLock) release();
+    }
+  }
+
+  private async publishBundle(opts: PublishOptions, bundle: ContentBundle, runId: string): Promise<PublishReport> {
     const wordCount = getWordCount(bundle) ?? 0;
     const durationMin = getEstimatedDurationMin(bundle) ?? 0;
-    console.log(`\nstory: "${bundle.text.title ?? bundle.id}" (${wordCount} words, ${durationMin}min)`);
+    console.error(`\nstory: "${bundle.text.title ?? bundle.id}" (${wordCount} words, ${durationMin}min)`);
 
-    const workDir = join(config.paths.tmpDir, bundle.id);
-    mkdirSync(workDir, { recursive: true });
+    mkdirSync(this.workDir, { recursive: true });
+    const workDir = mkdtempSync(join(this.workDir, 'publish-'));
+    const earlyResults = new Map<Platform, PublishResult>();
+    await Promise.all(opts.platforms.map(async platform => {
+      const ctx: PublishContext = { bundle, workDir, words: [], dryRun: opts.dryRun };
+      const reason = opts.reason ?? DEFAULT_PUBLISH_REASON;
+      const result = await this.applyIdempotencyGuard(platform, ctx, opts, 'skipped', [], runId, reason)
+        ?? await this.applyPreflight(platform, ctx, 'skipped', [], runId, reason);
+      if (result) earlyResults.set(platform, result);
+    }));
+    if (earlyResults.size === opts.platforms.length) {
+      return { slug: bundle.id, runId, results: opts.platforms.map(p => earlyResults.get(p)!) };
+    }
 
     let words: WordEntry[] = [];
     let captionStatus: CaptionStatus = 'skipped';
     const baseWarnings: string[] = [];
 
-    if (opts.skipTranscription) {
+    if (opts.skipTranscription || bundle.kind !== 'audio-story') {
       captionStatus = 'skipped';
     } else if (!bundle.primaryMedia) {
       captionStatus = 'skipped';
@@ -124,13 +157,22 @@ export class Orchestrator {
         baseWarnings.push(`transcription failed: ${t.error}`);
         if (!opts.allowNoCaptions) {
           console.error(`\n✗ whisper transcription failed and --allow-no-captions was not passed; aborting.`);
-          return { slug: bundle.id, results: [], fatalCaptionFailure: true, runId };
+          const results: PublishResult[] = [];
+          for (const platform of opts.platforms) {
+            const previous = earlyResults.get(platform);
+            if (previous) { results.push(previous); continue; }
+            const result = buildClassifiedFailure(platform, new Error(t.error), { origin: 'whisper', extras: { captionStatus: 'failed' } });
+            await this.recordPublishDecision({ action: `publish.${platform}.transcription`, platform,
+              ctx: { bundle, workDir, words: [], dryRun: opts.dryRun }, reason: opts.reason ?? DEFAULT_PUBLISH_REASON, result, runId });
+            results.push(result);
+          }
+          return { slug: bundle.id, results, fatalCaptionFailure: true, runId };
         }
       }
     }
 
     const settled = await Promise.allSettled(
-      opts.platforms.map(platform => this.publishPlatform(
+      opts.platforms.map(platform => earlyResults.get(platform) ?? this.publishPlatform(
         platform,
         opts,
         { bundle, workDir, words, dryRun: opts.dryRun, ...(opts.brand ? { brand: opts.brand } : {}) },
@@ -178,18 +220,26 @@ export class Orchestrator {
     baseWarnings: string[],
     runId: string,
   ): Promise<PublishResult> {
-    console.log(`→ ${platform}: starting`);
+    console.error(`→ ${platform}: starting`);
     const reason = opts.reason ?? DEFAULT_PUBLISH_REASON;
 
-    const preflightSkip = await this.applyPreflight(platform, ctx, captionStatus, baseWarnings, runId, reason);
-    if (preflightSkip) return preflightSkip;
-
-    const idempotencySkip = await this.applyIdempotencyGuard(platform, ctx, opts, captionStatus, baseWarnings, runId, reason);
-    if (idempotencySkip) return idempotencySkip;
-
+    const recordedParts = new Set<number>();
+    ctx = { ...ctx, completedParts: opts.force ? [] : completedPublicationParts(
+      this.decisions.list({ storySlug: ctx.bundle.id, platform, includeArchives: true }),
+      ctx.bundle.id, platform, new Date(), PUBLISHED_WINDOW_MS,
+    ) };
+    ctx.onPartPublished = async part => {
+      await this.recordPublishDecision({ action: `publish.${platform}.part${part.partIndex ?? 0}`, platform, ctx, runId, reason,
+        result: decorateResult(part, captionStatus, baseWarnings) });
+      recordedParts.add(part.partIndex ?? 0);
+      if (part.success && !ctx.dryRun) {
+        ctx.completedParts = [...(ctx.completedParts ?? []).filter(p => p.partIndex !== part.partIndex), part];
+      }
+    };
     const result = await this.publishWithRetry(this.getPublisher(platform), ctx);
     const decorated = decorateResult(result, captionStatus, baseWarnings);
-    await this.recordDecisionEntries(decorated, platform, ctx, runId, reason);
+    if (opts.dryRun) { decorated.skipped = true; decorated.reason = 'dry-run'; }
+    await this.recordDecisionEntries(decorated, platform, ctx, runId, reason, recordedParts);
     return decorated;
   }
 
@@ -217,7 +267,7 @@ export class Orchestrator {
     await this.recordPublishDecision({
       action: `publish.${platform}.preflight`, platform, ctx, reason, result, runId,
     });
-    console.log(`  ${platform} preflight: ${pre.reason}`);
+    console.error(`  ${platform} preflight: ${pre.reason}`);
     return result;
   }
 
@@ -234,10 +284,16 @@ export class Orchestrator {
     reason: string,
   ): Promise<PublishResult | null> {
     if (opts.force || opts.dryRun) return null;
-    const history = this.decisions.list({ storySlug: ctx.bundle.id, platform });
+    const history = this.decisions.list({ storySlug: ctx.bundle.id, platform, includeArchives: true });
+    const uncertain = findStuckSlugs(history, [platform]).find(s => s.reason === 'publication-outcome-unknown');
+    if (uncertain) {
+      return buildSkipResult({ platform, success: false, reason: 'previous publication needs reconciliation',
+        captionStatus, baseWarnings, errorClass: 'needs-human', errorMessage: 'Check the remote post, then reset attempts before retrying',
+        remediation: uncertain.lastRemediation });
+    }
     const check = wasRecentlyPublished(history, ctx.bundle.id, platform);
     if (!check.recent) return null;
-    console.log(`  ${platform} skipped: already published in the last 24h (${check.entry?.createdAt})`);
+    console.error(`  ${platform} skipped: already published in the last 24h (${check.entry?.createdAt})`);
     const result = buildSkipResult({
       platform,
       success: true,
@@ -259,9 +315,11 @@ export class Orchestrator {
     ctx: PublishContext,
     runId: string,
     reason: string,
+    recordedParts: Set<number>,
   ): Promise<void> {
     if (decorated.parts?.length) {
       for (const part of decorated.parts) {
+        if (recordedParts.has(part.partIndex ?? 0) || part.skipped) continue;
         await this.recordPublishDecision({
           action: `publish.${platform}.part${part.partIndex ?? 0}`,
           platform, ctx, reason, result: part, runId,
@@ -286,14 +344,24 @@ export class Orchestrator {
     result: PublishResult;
     runId: string;
   }): Promise<void> {
-    await this.decisions.record({
-      action: input.action,
-      storySlug: input.ctx.bundle.id,
-      platform: input.platform,
-      reason: input.reason,
-      result: input.result,
-      runId: input.runId,
-    });
+    if (input.ctx.dryRun) return;
+    try {
+      await this.decisions.record({
+        action: input.action,
+        storySlug: input.ctx.bundle.id,
+        platform: input.platform,
+        reason: input.reason,
+        result: input.result,
+        runId: input.runId,
+      });
+    } catch (err) {
+      if ((input.result.success && !input.result.skipped) || input.result.remediation?.action === 'reconcile-post') {
+        this.retainPublishLock = true;
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error(`Remote publication needs reconciliation because its decision could not be recorded (${message}). The publication lock was retained; inspect the remote posts before removing it.`);
+      }
+      throw err;
+    }
   }
 
   private async publishWithRetry(publisher: PlatformPublisher, ctx: PublishContext): Promise<PublishResult> {
@@ -311,7 +379,12 @@ export class Orchestrator {
         }
         return result;
       }, {
-        isRetryable: (err) => isTransientError(err as { message?: string; code?: string }),
+        isRetryable: (err) => {
+          const result = (err as { result?: PublishResult }).result;
+          if (result?.errorClass) return result.errorClass === 'transient';
+          if (result?.parts?.some(p => !p.success && p.errorClass !== 'transient')) return false;
+          return isTransientError(err);
+        },
         onRetry: (err, attempt, delayMs) => {
           const msg = err instanceof Error ? err.message : String(err);
           console.warn(`  ${publisher.platform} attempt ${attempt} failed (${msg}); retrying in ${delayMs}ms`);
@@ -321,7 +394,7 @@ export class Orchestrator {
       const classified = classifyError(err, { origin: platformOrigin(publisher.platform) });
       void notifyFailure(
         { slug: ctx.bundle.id, platform: publisher.platform, error: classified.message, attempts: attemptsSeen },
-        config.alerts?.webhookUrl || undefined,
+        ctx.dryRun ? undefined : this.alertWebhookUrl || undefined,
       );
       if (lastResult) return lastResult;
       return buildClassifiedFailure(publisher.platform, err, {
@@ -334,14 +407,14 @@ export class Orchestrator {
     | { ok: true; words: WordEntry[] }
     | { ok: false; error: string }
   > {
-    console.log(`\ntranscribing audio...`);
+    console.error(`\ntranscribing audio...`);
     try {
       const { words, jsonPath } = await this.subs.generate({
         audioPath,
         outputDir: workDir,
         language: locale.split('-')[0] ?? 'es',
       });
-      console.log(`  ${words.length} words → ${jsonPath}`);
+      console.error(`  ${words.length} words → ${jsonPath}`);
       return { ok: true, words };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

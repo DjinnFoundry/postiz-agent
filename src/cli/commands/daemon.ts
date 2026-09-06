@@ -34,17 +34,22 @@ Examples:
       const intervalMs = Math.max(1, Number.parseInt(opts.intervalMinutes, 10) || 60) * 60_000;
       const maxIterations = opts.maxIterations ? Math.max(1, Number.parseInt(opts.maxIterations, 10) || 0) : undefined;
 
-      let stopRequested = false;
-      const onStop = () => { stopRequested = true; };
+      const stop = new AbortController();
+      const onStop = () => { stop.abort(); };
       process.on('SIGINT', onStop);
       process.on('SIGTERM', onStop);
 
-      await runDaemon({
-        tenant: opts.tenant,
-        platforms,
-        intervalMs,
-        ...(maxIterations !== undefined ? { maxIterations } : {}),
-        shouldStop: () => stopRequested,
-      });
+      try {
+        await runDaemon({
+          tenant: opts.tenant,
+          platforms,
+          intervalMs,
+          ...(maxIterations !== undefined ? { maxIterations } : {}),
+          signal: stop.signal,
+        });
+      } finally {
+        process.off('SIGINT', onStop);
+        process.off('SIGTERM', onStop);
+      }
     });
 }

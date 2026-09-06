@@ -5,6 +5,7 @@ import { StorySchema, StorySchemaV2, type Story, type StoryV2 } from '../types.j
 import type { ContentBundle, Recipient } from '../core/content-bundle.js';
 import { countSentences } from '../lib/sentences.js';
 import { generateCoverSvg } from './cover-placeholder.js';
+import { validateSlug } from '../lib/slug.js';
 
 /**
  * AudioKids adapter: reads a story from the AudioKids output directory and produces a
@@ -39,17 +40,14 @@ export interface AudioKidsAdapterOptions {
   placeholderDir?: string;
   /**
    * Side channel for non-fatal walk failures (unreadable dir entry, malformed
-   * story.json, missing audio in a partially-rendered story, etc.). Default
-   * routes to stderr behind `DEBUG_ADAPTER=1` so production stays quiet but
-   * operators can opt in when a candidate mysteriously disappears. Tests pass
-   * an assertion callback to verify the failure surfaced.
+   * story.json, missing audio in a partially-rendered story, etc.). Defaults
+   * to stderr so operators can repair skipped candidates. Tests can pass an
+   * assertion callback to verify the failure surfaced.
    */
   onWarn?: (message: string) => void;
 }
 
-const DEFAULT_ON_WARN: (message: string) => void = process.env.DEBUG_ADAPTER === '1'
-  ? (m: string) => console.warn(`[audiokids-adapter] ${m}`)
-  : () => {};
+const DEFAULT_ON_WARN = (message: string): void => console.warn(`[audiokids-adapter] ${message}`);
 
 export class AudioKidsAdapter {
   private readonly generatePlaceholder: boolean;
@@ -79,8 +77,8 @@ export class AudioKidsAdapter {
 
   /**
    * List every story available in the AudioKids output directory, returning lightweight
-   * candidate metadata (no full parse) for dispatch selection. Full parse happens at
-   * publish time via loadBundle(). Walks the dir once, classifying each entry as v2
+   * candidate metadata for dispatch selection. Validates metadata and audio files
+   * so malformed stories cannot block the queue. Walks the dir once, classifying each entry as v2
    * (subdir with story.json) or v1 (flat .json+.mp3 pair) and emitting at most one
    * candidate per slug.
    */
@@ -122,6 +120,8 @@ export class AudioKidsAdapter {
       if (st.isFile() && entry.endsWith('.json')) {
         const slug = entry.replace(/\.json$/, '');
         if (seen.has(slug)) continue;
+        // loadBundle always prefers v2, including when its metadata is invalid.
+        if (existsSync(join(this.outputDir, slug, 'story.json'))) continue;
         const candidate = this.candidateFromV1Json(slug);
         if (candidate) {
           out.push(candidate);
@@ -189,14 +189,20 @@ export class AudioKidsAdapter {
   ): { slug: string; mtimeMs: number; generatedAt?: string } | null {
     const jsonPath = join(dir, 'story.json');
     if (!existsSync(jsonPath)) return null;
-    if (!this.findV2Audio(slug, dir)) return null;
-    const st = statSync(jsonPath);
-    const generatedAt = parseTimestampFromSlug(slug);
-    return {
-      slug,
-      mtimeMs: st.mtimeMs,
-      ...(generatedAt ? { generatedAt } : {}),
-    };
+    try {
+      validateSlug(slug);
+      const audioPath = this.findV2Audio(slug, dir);
+      if (!audioPath) throw new Error(`no .mp3 inside ${dir}`);
+      const audio = statSync(audioPath);
+      if (!audio.isFile() || audio.size === 0) throw new Error(`audio is empty or not a file: ${audioPath}`);
+      StorySchemaV2.parse(JSON.parse(readFileSync(jsonPath, 'utf-8')));
+      const st = statSync(jsonPath);
+      const generatedAt = parseTimestampFromSlug(slug);
+      return { slug, mtimeMs: st.mtimeMs, ...(generatedAt ? { generatedAt } : {}) };
+    } catch (err) {
+      this.onWarn(`skipping v2 candidate ${slug}: ${describe(err)}`);
+      return null;
+    }
   }
 
   private findV2Audio(slug: string, dir: string): string | undefined {
@@ -274,18 +280,18 @@ export class AudioKidsAdapter {
   ): { slug: string; mtimeMs: number; generatedAt?: string } | null {
     const jsonPath = join(this.outputDir, `${slug}.json`);
     const mp3Path = join(this.outputDir, `${slug}.mp3`);
-    if (!existsSync(mp3Path)) return null;
-    const st = statSync(jsonPath);
-    let generatedAt: string | undefined;
     try {
-      const raw = JSON.parse(readFileSync(jsonPath, 'utf-8'));
-      const parsed = StorySchema.safeParse(raw);
-      if (parsed.success) generatedAt = parsed.data.meta.generatedAt;
-      else this.onWarn(`v1 candidate ${slug}: schema mismatch on ${jsonPath}: ${parsed.error.message}`);
+      validateSlug(slug);
+      const audio = statSync(mp3Path);
+      if (!audio.isFile() || audio.size === 0) throw new Error(`audio is empty or not a file: ${mp3Path}`);
+      const parsed = StorySchema.parse(JSON.parse(readFileSync(jsonPath, 'utf-8')));
+      const st = statSync(jsonPath);
+      const generatedAt = parsed.meta.generatedAt;
+      return { slug, mtimeMs: st.mtimeMs, ...(generatedAt ? { generatedAt } : {}) };
     } catch (err) {
-      this.onWarn(`v1 candidate ${slug}: parse failed for ${jsonPath}: ${describe(err)}`);
+      this.onWarn(`skipping v1 candidate ${slug}: ${describe(err)}`);
+      return null;
     }
-    return { slug, mtimeMs: st.mtimeMs, ...(generatedAt ? { generatedAt } : {}) };
   }
 
   private resolveV1Cover(slug: string, story: Story): string | undefined {

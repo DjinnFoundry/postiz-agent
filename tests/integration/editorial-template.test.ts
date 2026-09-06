@@ -1,8 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
+import { runInNewContext } from 'node:vm';
 import { loadCatalog } from '../../src/theme/catalog.js';
 
 const ROOT = resolve(__dirname, '..', '..');
@@ -333,5 +334,33 @@ describe('editorial.mjs word highlighting weight + scale shift', () => {
     const { html } = runEditorial(payloadFor('hero-display', ASPECTS[0]));
     expect(html).toMatch(/tl\.set\("#page-\d+ \[data-word='\d+'\]", \{ className: "\+=active" \}/);
     expect(html).toMatch(/tl\.set\("#page-\d+ \[data-word='\d+'\]", \{ className: "-=active" \}/);
+  });
+});
+
+
+describe('editorial.mjs intro animation ownership', () => {
+  it.each(ASPECTS)('finishes the content fade at the clip boundary without animating the clip ($name)', aspect => {
+    const { html } = runEditorial(payloadFor('hero-display', aspect));
+    const intro = html.match(/class="clip intro"[^>]*data-start="([0-9.]+)"[^>]*data-duration="([0-9.]+)"/);
+    expect(intro).toBeTruthy();
+    const clipEnd = Number(intro![1]) + Number(intro![2]);
+    const content = html.match(/<div[^>]*class="intro-content"[^>]*>/);
+    expect(content).toBeTruthy();
+    expect(content![0]).not.toMatch(/data-start|data-duration/);
+
+    const script = html.match(/<script>([\s\S]*?)<\/script>/);
+    expect(script).toBeTruthy();
+    const timeline = { fromTo: vi.fn(), to: vi.fn(), set: vi.fn() };
+    runInNewContext(script![1], { gsap: { timeline: () => timeline }, window: {} });
+
+    const fades = timeline.fromTo.mock.calls.filter(([target]) => target === '.intro-content');
+    expect(fades).toHaveLength(1);
+    const [, from, to, start] = fades[0];
+    expect(from).toMatchObject({ opacity: 1 });
+    expect(to).toMatchObject({ opacity: 0 });
+    expect(start + to.duration).toBeCloseTo(clipEnd, 6);
+    expect(timeline.set).toHaveBeenCalledWith('.intro-content', expect.objectContaining({ opacity: 0 }), clipEnd);
+    const animatedTargets = [...timeline.fromTo.mock.calls, ...timeline.to.mock.calls, ...timeline.set.mock.calls].map(([target]) => target);
+    expect(animatedTargets).not.toContain('.intro');
   });
 });

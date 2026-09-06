@@ -36,6 +36,8 @@ describe('loadTenant("default")', () => {
 
 describe('loadTenant("audiokids") (named tenant)', () => {
   it('returns paths under data/<slug>/ (not legacy)', () => {
+    mkdirSync(resolve(scratchRoot, 'tenants', 'audiokids'), { recursive: true });
+    writeFileSync(resolve(scratchRoot, 'tenants', 'audiokids', 'config.json'), '{}');
     const t = loadTenant('audiokids', { rootDir: scratchRoot });
     expect(t.slug).toBe('audiokids');
     expect(t.paths.decisionsLog).toBe(resolve(scratchRoot, 'data', 'audiokids', 'decisions.jsonl'));
@@ -87,7 +89,7 @@ describe('loadTenant("audiokids") (named tenant)', () => {
     expect(t.brand?.name).toBe('ZetaRead');
     expect(t.brand?.defaultHashtags).toEqual(['booklovers', 'reading']);
 
-    const empty = loadTenant('audiokids', { rootDir: scratchRoot });
+    const empty = loadTenant('default', { rootDir: scratchRoot });
     expect(empty.brand).toEqual({});
   });
 });

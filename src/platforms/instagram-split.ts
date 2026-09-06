@@ -42,9 +42,12 @@ export function splitIntoParts(
   words: SplitWordLite[] = [],
   opts: SplitOptions = {},
 ): PartSpec[] {
+  if (!Number.isFinite(audioDurationSec)) throw new Error('audio duration must be finite');
   if (audioDurationSec <= 0) return [];
   const maxPart = opts.maxPartSec ?? DEFAULT_MAX_PART;
   const snapWindow = opts.snapWindowSec ?? DEFAULT_SNAP_WINDOW;
+  if (!Number.isFinite(maxPart) || maxPart <= 0) throw new Error('maxPartSec must be positive and finite');
+  if (!Number.isFinite(snapWindow) || snapWindow < 0) throw new Error('snapWindowSec must be non-negative and finite');
 
   const n = Math.max(1, Math.ceil(audioDurationSec / maxPart));
   if (n === 1) {
@@ -68,12 +71,15 @@ export function splitIntoParts(
   for (let i = 1; i < n; i++) ideal.push((audioDurationSec * i) / n);
 
   const splits = ideal.map(t => snapToBoundary(t, beatSecs, wordEnds, snapWindow));
-  // Guarantee strictly increasing and within bounds.
+  // Keep every part within the budget, including the tail left after a snap.
   const bounded: number[] = [];
   let lastBoundary = 0;
-  for (const s of splits) {
-    let v = Math.max(s, lastBoundary + 1);
-    v = Math.min(v, audioDurationSec);
+  const minPart = Math.min(1, audioDurationSec / n);
+  for (let i = 0; i < splits.length; i++) {
+    const remaining = n - i - 1;
+    const lower = Math.max(lastBoundary + minPart, audioDurationSec - remaining * maxPart);
+    const upper = Math.min(lastBoundary + maxPart, audioDurationSec - remaining * minPart);
+    const v = Math.min(upper, Math.max(lower, splits[i]));
     bounded.push(v);
     lastBoundary = v;
   }

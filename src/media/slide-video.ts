@@ -1,9 +1,10 @@
-import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { config } from '../config.js';
 import { run } from '../lib/process.js';
 import type { ContentBundle } from '../core/content-bundle.js';
 import { resolveTagline } from '../core/content-bundle.js';
+import type { ThemeDecisionStore } from '../theme/catalog.js';
 import { resolveTheme } from '../theme/resolver.js';
 import { VARIANTS, type Platform, type WordEntry } from '../types.js';
 import { finalizeRender, persistStderr } from './render-output.js';
@@ -15,6 +16,8 @@ export interface SlideDimensions {
 
 /** Template used for every bundle. The treatment is passed via the payload. */
 const EDITORIAL_TEMPLATE = 'editorial.mjs';
+/** Pin the renderer so a new npm release cannot break unattended renders. */
+const HYPERFRAMES_PACKAGE = 'hyperframes@0.8.30';
 
 export interface BuildInput {
   platform: Platform;
@@ -60,7 +63,15 @@ const OPTIONAL_PROJECT_ENTRIES = ['assets/fonts'] as const;
  * ffprobe duration > 0) before we declare success. Corrupt outputs surface as errors
  * instead of silent empty files.
  */
+export interface SlideVideoOptions {
+  workRoot?: string;
+  renderLogsDir?: string;
+  themeDecisions?: ThemeDecisionStore;
+}
+
 export class SlideVideoBuilder {
+  constructor(private readonly options: SlideVideoOptions = {}) {}
+
   async build(input: BuildInput): Promise<BuildResult> {
     const dims = canvasFor(input.platform);
     if (!input.words || input.words.length === 0) {
@@ -77,7 +88,7 @@ export class SlideVideoBuilder {
     const logFile = this.reserveRenderLog(input.bundle.id, input.platform, input.partIndex);
     try {
       this.assertEditorialTemplate(workspace);
-      const theme = resolveTheme(input.bundle);
+      const theme = resolveTheme(input.bundle, { store: this.options.themeDecisions });
 
       const clipStart = input.clipStartSec ?? 0;
       const lastEnd = input.words.at(-1)?.end ?? 0;
@@ -103,10 +114,10 @@ export class SlideVideoBuilder {
   }
 
   private createWorkspace(id: string, platform: Platform, partIndex?: number): string {
-    mkdirSync(HF_WORK_ROOT, { recursive: true });
+    const workRoot = this.options.workRoot ?? HF_WORK_ROOT;
+    mkdirSync(workRoot, { recursive: true });
     const suffix = partIndex ? `-part${partIndex}` : '';
-    const workspace = join(HF_WORK_ROOT, `${id}-${platform}${suffix}-${process.pid}-${Date.now()}`);
-    mkdirSync(workspace, { recursive: true });
+    const workspace = mkdtempSync(join(workRoot, `${id}-${platform}${suffix}-`));
     for (const entry of STATIC_PROJECT_ENTRIES) {
       const src = join(HF_PROJECT, entry);
       if (!existsSync(src)) continue;
@@ -126,10 +137,11 @@ export class SlideVideoBuilder {
   }
 
   private reserveRenderLog(id: string, platform: Platform, partIndex?: number): string {
-    mkdirSync(RENDER_LOG_DIR, { recursive: true });
+    const renderLogsDir = this.options.renderLogsDir ?? RENDER_LOG_DIR;
+    mkdirSync(renderLogsDir, { recursive: true });
     const suffix = partIndex ? `-part${partIndex}` : '';
     const ts = new Date().toISOString().replace(/[:.]/g, '-');
-    return join(RENDER_LOG_DIR, `${id}-${platform}${suffix}-${ts}.log`);
+    return join(renderLogsDir, `${id}-${platform}${suffix}-${ts}.log`);
   }
 
   private assertEditorialTemplate(workspace: string): void {
@@ -207,7 +219,7 @@ export class SlideVideoBuilder {
     }
     try {
       await run('node', [templatePath], { cwd: workspace, stdin: JSON.stringify(payload) });
-      await run('npx', ['hyperframes', 'lint'], { cwd: workspace });
+      await run('npx', ['--yes', HYPERFRAMES_PACKAGE, 'lint'], { cwd: workspace });
     } catch (err) {
       persistStderr(err, logFile);
       throw err;
@@ -219,7 +231,7 @@ export class SlideVideoBuilder {
     const renderOut = join(workspace, 'renders', `${id}-${platform}${suffix}.mp4`);
     mkdirSync(dirname(renderOut), { recursive: true });
     try {
-      await run('npx', ['hyperframes', 'render', '--output', renderOut, '--quiet'], { cwd: workspace });
+      await run('npx', ['--yes', HYPERFRAMES_PACKAGE, 'render', '--output', renderOut, '--quiet'], { cwd: workspace });
     } catch (err) {
       persistStderr(err, logFile);
       throw err;

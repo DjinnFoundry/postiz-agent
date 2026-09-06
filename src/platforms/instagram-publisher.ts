@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import type { PublishContext } from './base.js';
 import { PostizVideoPublisher } from './postiz-video-publisher.js';
+import { SlideVideoBuilder } from '../media/slide-video.js';
 import { PostizClient } from './postiz.js';
 import { probeDurationSec } from '../lib/ffprobe.js';
 import { splitIntoParts, type PartSpec } from './instagram-split.js';
@@ -24,11 +25,12 @@ export class InstagramPublisher extends PostizVideoPublisher {
   readonly platform: Platform = 'instagram';
 
   constructor(
-    postiz: PostizClient = new PostizClient(),
+    postiz: PostizClient | (() => PostizClient) = () => new PostizClient(),
     /** Audio duration probe — injectable for testing. */
     private readonly probeDuration: (p: string) => Promise<number> = probeDurationSec,
+    slides?: SlideVideoBuilder,
   ) {
-    super(postiz);
+    super(postiz, slides);
   }
 
   override async publish(ctx: PublishContext): Promise<PublishResult> {
@@ -48,24 +50,40 @@ export class InstagramPublisher extends PostizVideoPublisher {
     const parts = splitIntoParts(duration, ctx.bundle.beats ?? [], ctx.words ?? []);
     if (parts.length <= 1) return super.publish(ctx);
 
-    const startTs = Date.now();
+    let previousScheduledMs: number | undefined;
     const partResults: PublishResult[] = [];
     for (const part of parts) {
-      partResults.push(await this.publishPart(ctx, part, startTs));
+      const completed = ctx.dryRun ? undefined : ctx.completedParts?.find(p =>
+        p.success && p.partIndex === part.partIndex && p.partTotal === part.partTotal,
+      );
+      if (completed) {
+        partResults.push({ ...completed, skipped: true, reason: 'part already published' });
+        const scheduled = Date.parse(completed.scheduledDate ?? completed.timestamp);
+        if (Number.isFinite(scheduled)) previousScheduledMs = Math.max(previousScheduledMs ?? 0, scheduled);
+        continue;
+      }
+      const result = await this.publishPart(ctx, part, previousScheduledMs);
+      // Persist before another upload can start, including before retries.
+      await ctx.onPartPublished?.(result);
+      partResults.push(result);
+      if (!result.success) break;
+      previousScheduledMs = Date.parse(result.scheduledDate ?? result.timestamp);
     }
 
     const every = partResults.every(p => p.success);
     const errors = partResults.filter(p => !p.success).map(p => p.error).filter(Boolean);
+    const failure = partResults.find(p => !p.success);
     return {
       platform: this.platform,
       success: every,
       timestamp: ts,
       parts: partResults,
       ...(every ? {} : { error: errors.join(' | ') || 'one or more parts failed' }),
+      ...(failure?.errorClass ? { errorClass: failure.errorClass, remediation: failure.remediation } : {}),
     };
   }
 
-  private async publishPart(ctx: PublishContext, part: PartSpec, startTs: number): Promise<PublishResult> {
+  private async publishPart(ctx: PublishContext, part: PartSpec, previousScheduledMs?: number): Promise<PublishResult> {
     const ts = new Date().toISOString();
     const videoPath = join(ctx.workDir, `${ctx.bundle.id}-${this.platform}-part${part.partIndex}.mp4`);
     try {
@@ -92,7 +110,10 @@ export class InstagramPublisher extends PostizVideoPublisher {
         };
       }
       const integration = await this.postiz.findIntegration(this.platform);
-      const scheduledDate = new Date(startTs + (part.partIndex - 1) * PART_STAGGER_MINUTES * 60_000).toISOString();
+      const scheduledDate = new Date(Math.max(
+        Date.now(),
+        previousScheduledMs == null ? 0 : previousScheduledMs + PART_STAGGER_MINUTES * 60_000,
+      )).toISOString();
       const rich = buildCaptionRich({
         bundle: ctx.bundle,
         platform: this.platform,
@@ -102,6 +123,7 @@ export class InstagramPublisher extends PostizVideoPublisher {
       const posted = await this.postiz.createPost({
         platform: this.platform,
         integrationId: integration.id,
+        providerIdentifier: integration.providerIdentifier,
         text: rich.caption,
         videoPath: build.outputPath,
         scheduledDate,
@@ -111,6 +133,7 @@ export class InstagramPublisher extends PostizVideoPublisher {
         success: true,
         postId: posted.postId,
         url: posted.url,
+        scheduledDate: posted.scheduledDate,
         ...(rich.ctaVariantId ? { ctaVariant: rich.ctaVariantId } : {}),
         timestamp: ts,
         partIndex: part.partIndex,

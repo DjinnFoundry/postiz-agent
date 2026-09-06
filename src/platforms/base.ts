@@ -18,6 +18,10 @@ export interface PublishContext {
   dryRun?: boolean;
   /** Per-tenant brand identity. Overrides AudioKids defaults in the caption builder. */
   brand?: BrandContext;
+  /** Previously published parts to retain when resuming a multipart upload. */
+  completedParts?: PublishResult[];
+  /** Persist each completed attempt before the next part starts. */
+  onPartPublished?: (part: PublishResult) => Promise<void>;
 }
 
 export interface PlatformPublisher {
@@ -36,7 +40,7 @@ export interface PlatformPublisher {
  */
 export abstract class VideoPublisher implements PlatformPublisher {
   abstract readonly platform: Platform;
-  protected readonly slides = new SlideVideoBuilder();
+  constructor(protected readonly slides: SlideVideoBuilder = new SlideVideoBuilder()) {}
 
   async publish(ctx: PublishContext): Promise<PublishResult> {
     const ts = new Date().toISOString();
@@ -44,7 +48,7 @@ export abstract class VideoPublisher implements PlatformPublisher {
       const { mediaPath, warnings } = await this.resolveMedia(ctx);
       if (ctx.dryRun) {
         const target = mediaPath ?? '(no media — text-only post)';
-        console.log(`  [dry-run] would publish to ${this.platform}: ${target}`);
+        console.error(`  [dry-run] would publish to ${this.platform}: ${target}`);
         return {
           platform: this.platform,
           success: true,
@@ -74,9 +78,8 @@ export abstract class VideoPublisher implements PlatformPublisher {
   protected async resolveMedia(ctx: PublishContext): Promise<{ mediaPath: string | null; warnings: string[] }> {
     if (ctx.bundle.kind === 'audio-story' && (!ctx.words || ctx.words.length === 0)) {
       throw new Error(
-        `cannot build a slide video for ${this.platform} without a transcript. ` +
-        `The orchestrator should either transcribe, abort, or pass --skip-transcription ` +
-        `(which skips video generation entirely for slide-based publishers).`,
+        `audio-story slide rendering for ${this.platform} requires a non-empty transcript. ` +
+        `Run transcription successfully before publishing.`,
       );
     }
     const result = await resolveMediaForPlatform({

@@ -35,12 +35,15 @@ export interface DaemonOptions {
   executor?: (tenant: string, platforms: Platform[]) => Promise<DispatchOutcome>;
   /** Polled before every sleep; when true the loop exits gracefully. */
   shouldStop?: () => boolean;
+  /** Interrupt the heartbeat wait immediately on SIGINT/SIGTERM. */
+  signal?: AbortSignal;
   /** Sink for status / heartbeat / error lines. Default console.log. */
   writer?: (line: string) => void;
 }
 
 export async function runDaemon(opts: DaemonOptions): Promise<void> {
-  const sleep = opts.sleep ?? defaultSleep;
+  const sleep = opts.sleep ?? ((ms: number) => defaultSleep(ms, opts.signal));
+  const stopping = () => opts.signal?.aborted || opts.shouldStop?.();
   const writer = opts.writer ?? ((line: string) => console.log(line));
   const max = opts.maxIterations ?? Number.POSITIVE_INFINITY;
   const executor = opts.executor ?? defaultExecutor;
@@ -48,7 +51,7 @@ export async function runDaemon(opts: DaemonOptions): Promise<void> {
   writer(`daemon start: tenant=${opts.tenant} platforms=${opts.platforms.join(',')} intervalMs=${opts.intervalMs}`);
   let iter = 0;
   while (iter < max) {
-    if (opts.shouldStop?.()) {
+    if (stopping()) {
       writer('daemon stop: shouldStop signaled');
       break;
     }
@@ -65,13 +68,23 @@ export async function runDaemon(opts: DaemonOptions): Promise<void> {
       const msg = err instanceof Error ? err.message : String(err);
       writer(`  iteration error (continuing): ${msg}`);
     }
+    if (opts.intervalMs <= 0 || stopping()) break;
     if (iter < max) await sleep(opts.intervalMs);
   }
   writer(`daemon exit: ran ${iter} iteration(s)`);
 }
 
-function defaultSleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.resolve();
+  return new Promise(resolve => {
+    const finish = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', finish);
+      resolve();
+    };
+    const timer = setTimeout(finish, ms);
+    signal?.addEventListener('abort', finish, { once: true });
+  });
 }
 
 /**
@@ -81,26 +94,30 @@ function defaultSleep(ms: number): Promise<void> {
  */
 async function defaultExecutor(tenant: string, platforms: Platform[]): Promise<DispatchOutcome> {
   const { buildTenantBundle } = await import('./tenant-context.js');
-  const { selectNextStory } = await import('../dispatch.js');
+  const { selectNextStory, selectPendingPlatforms } = await import('../dispatch.js');
   const { Orchestrator } = await import('../orchestrator.js');
   const { brandFromTenant } = await import('../copy/brand.js');
   const { DEFAULT_ADAPTER } = await import('../adapters/registry.js');
 
   const ctx = buildTenantBundle(tenant);
-  const log = ctx.decisions.list();
+  const log = ctx.decisions.list({ includeArchives: true });
   const adapter = ctx.adapters.get(DEFAULT_ADAPTER);
   const candidates = adapter.listCandidates().map(c => ({ slug: c.id, generatedAtMs: c.generatedAtMs }));
   const slug = selectNextStory(candidates, log, platforms);
   if (!slug) {
     return { dispatched: false, reason: 'nothing pending', ts: new Date().toISOString() };
   }
-  const orch = new Orchestrator({ adapters: ctx.adapters, decisions: ctx.decisions });
-  await orch.publish({
+  const orch = new Orchestrator(ctx.orchestratorDeps);
+  const report = await orch.publish({
     id: slug,
     adapter: DEFAULT_ADAPTER,
-    platforms,
+    platforms: selectPendingPlatforms(log, slug, platforms),
     reason: 'daemon heartbeat dispatch',
     brand: brandFromTenant(ctx.tenant),
   });
+  if (report.fatalCaptionFailure || report.results.some(result => !result.success)) {
+    const failed = report.results.filter(result => !result.success).map(result => `${result.platform}: ${result.error ?? 'publish failed'}`);
+    throw new Error(`Dispatch ${slug} failed: ${failed.join('; ') || 'caption failure'}`);
+  }
   return { dispatched: true, slug, ts: new Date().toISOString() };
 }

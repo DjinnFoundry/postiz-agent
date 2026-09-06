@@ -34,6 +34,9 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
 
 .intro {
   position: absolute; inset: 0;
+}
+.intro-content {
+  position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
 }
@@ -271,10 +274,12 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · editorial</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -291,7 +296,8 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#A05E1E" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -359,6 +365,9 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
 }
 
 .intro {
+  position: absolute; inset: 0;
+}
+.intro-content {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
@@ -597,10 +606,12 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · editorial</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -617,7 +628,8 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#A05E1E" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -685,6 +697,9 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
 }
 
 .intro {
+  position: absolute; inset: 0;
+}
+.intro-content {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
@@ -923,10 +938,12 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · editorial</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -943,7 +960,8 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#A05E1E" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -1013,6 +1031,9 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
 
 .intro {
   position: absolute; inset: 0;
+}
+.intro-content {
+  position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
 }
@@ -1242,10 +1263,12 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · editorial</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -1262,7 +1285,8 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#A05E1E" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -1332,6 +1356,9 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
 
 .intro {
   position: absolute; inset: 0;
+}
+.intro-content {
+  position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
 }
@@ -1561,10 +1588,12 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · editorial</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -1581,7 +1610,8 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#A05E1E" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -1651,6 +1681,9 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
 
 .intro {
   position: absolute; inset: 0;
+}
+.intro-content {
+  position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
 }
@@ -1880,10 +1913,12 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · editorial</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -1900,7 +1935,8 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#A05E1E" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -1970,6 +2006,9 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
 
 .intro {
   position: absolute; inset: 0;
+}
+.intro-content {
+  position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
 }
@@ -2210,10 +2249,12 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · infantil</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -2230,7 +2271,8 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#6A4EB3" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -2300,6 +2342,9 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
 
 .intro {
   position: absolute; inset: 0;
+}
+.intro-content {
+  position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
 }
@@ -2540,10 +2585,12 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · infantil</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -2560,7 +2607,8 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#6A4EB3" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -2630,6 +2678,9 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
 
 .intro {
   position: absolute; inset: 0;
+}
+.intro-content {
+  position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
 }
@@ -2870,10 +2921,12 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · infantil</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -2890,7 +2943,8 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#6A4EB3" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -2959,6 +3013,9 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
 }
 
 .intro {
+  position: absolute; inset: 0;
+}
+.intro-content {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
@@ -3189,10 +3246,12 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · infantil</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -3209,7 +3268,8 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#8A6200" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -3278,6 +3338,9 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
 }
 
 .intro {
+  position: absolute; inset: 0;
+}
+.intro-content {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
@@ -3508,10 +3571,12 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · infantil</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -3528,7 +3593,8 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#8A6200" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -3597,6 +3663,9 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
 }
 
 .intro {
+  position: absolute; inset: 0;
+}
+.intro-content {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
@@ -3827,10 +3896,12 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · infantil</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -3847,7 +3918,8 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#8A6200" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -3916,6 +3988,9 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
 }
 
 .intro {
+  position: absolute; inset: 0;
+}
+.intro-content {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
@@ -4156,10 +4231,12 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · epica</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -4176,7 +4253,8 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#E8A93B" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -4245,6 +4323,9 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
 }
 
 .intro {
+  position: absolute; inset: 0;
+}
+.intro-content {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
@@ -4485,10 +4566,12 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · epica</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -4505,7 +4588,8 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#E8A93B" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -4574,6 +4658,9 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
 }
 
 .intro {
+  position: absolute; inset: 0;
+}
+.intro-content {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
@@ -4814,10 +4901,12 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · epica</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -4834,7 +4923,8 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#E8A93B" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -4903,6 +4993,9 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
 }
 
 .intro {
+  position: absolute; inset: 0;
+}
+.intro-content {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
@@ -5133,10 +5226,12 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · editorial</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -5153,7 +5248,8 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#A05E1E" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -5222,6 +5318,9 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
 }
 
 .intro {
+  position: absolute; inset: 0;
+}
+.intro-content {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
@@ -5452,10 +5551,12 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · editorial</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -5472,7 +5573,8 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#A05E1E" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -5541,6 +5643,9 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
 }
 
 .intro {
+  position: absolute; inset: 0;
+}
+.intro-content {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
@@ -5771,10 +5876,12 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · editorial</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -5791,7 +5898,8 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#A05E1E" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -5861,6 +5969,9 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
 }
 
 .intro {
+  position: absolute; inset: 0;
+}
+.intro-content {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
@@ -6131,10 +6242,12 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · epica</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -6151,7 +6264,8 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#8A681A" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -6221,6 +6335,9 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
 }
 
 .intro {
+  position: absolute; inset: 0;
+}
+.intro-content {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
@@ -6491,10 +6608,12 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · epica</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -6511,7 +6630,8 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#8A681A" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -6581,6 +6701,9 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
 }
 
 .intro {
+  position: absolute; inset: 0;
+}
+.intro-content {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
@@ -6851,10 +6974,12 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · epica</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -6871,7 +6996,8 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#8A681A" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -6940,6 +7066,9 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
 }
 
 .intro {
+  position: absolute; inset: 0;
+}
+.intro-content {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
@@ -7170,10 +7299,12 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · editorial</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -7190,7 +7321,8 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#E8B84A" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -7259,6 +7391,9 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
 }
 
 .intro {
+  position: absolute; inset: 0;
+}
+.intro-content {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
@@ -7489,10 +7624,12 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · editorial</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -7509,7 +7646,8 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#E8B84A" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -7578,6 +7716,9 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
 }
 
 .intro {
+  position: absolute; inset: 0;
+}
+.intro-content {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
@@ -7808,10 +7949,12 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · editorial</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -7828,7 +7971,8 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#E8B84A" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -7897,6 +8041,9 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
 }
 
 .intro {
+  position: absolute; inset: 0;
+}
+.intro-content {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
@@ -8137,10 +8284,12 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · epica</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -8157,7 +8306,8 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#8A5A2D" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -8227,6 +8377,9 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
 
 .intro {
   position: absolute; inset: 0;
+}
+.intro-content {
+  position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
 }
@@ -8466,10 +8619,12 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · epica</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -8486,7 +8641,8 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#8A5A2D" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -8556,6 +8712,9 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
 
 .intro {
   position: absolute; inset: 0;
+}
+.intro-content {
+  position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
 }
@@ -8795,10 +8954,12 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · epica</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -8815,7 +8976,8 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#8A5A2D" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -8885,6 +9047,9 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
 
 .intro {
   position: absolute; inset: 0;
+}
+.intro-content {
+  position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
 }
@@ -9123,11 +9288,13 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · editorial</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
       <div class="stamp stamp-rotate"><svg viewBox="0 0 200 200"><defs><path id="circ" d="M 100 100 m -78 0 a 78 78 0 1 1 156 0 a 78 78 0 1 1 -156 0"/></defs><text><textPath href="#circ" startOffset="0">AUDIOCUENTO · HECHO CON CARIÑO ·</textPath></text></svg></div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -9144,7 +9311,8 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#C44569" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -9214,6 +9382,9 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
 
 .intro {
   position: absolute; inset: 0;
+}
+.intro-content {
+  position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
 }
@@ -9452,11 +9623,13 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · editorial</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
       <div class="stamp stamp-rotate"><svg viewBox="0 0 200 200"><defs><path id="circ" d="M 100 100 m -78 0 a 78 78 0 1 1 156 0 a 78 78 0 1 1 -156 0"/></defs><text><textPath href="#circ" startOffset="0">AUDIOCUENTO · HECHO CON CARIÑO ·</textPath></text></svg></div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -9473,7 +9646,8 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#C44569" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -9542,6 +9716,9 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
 }
 
 .intro {
+  position: absolute; inset: 0;
+}
+.intro-content {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
@@ -9781,11 +9958,13 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · editorial</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
       <div class="stamp stamp-rotate"><svg viewBox="0 0 200 200"><defs><path id="circ" d="M 100 100 m -78 0 a 78 78 0 1 1 156 0 a 78 78 0 1 1 -156 0"/></defs><text><textPath href="#circ" startOffset="0">AUDIOCUENTO · HECHO CON CARIÑO ·</textPath></text></svg></div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -9802,7 +9981,8 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#C44569" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -9871,6 +10051,9 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
 }
 
 .intro {
+  position: absolute; inset: 0;
+}
+.intro-content {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
@@ -10102,10 +10285,12 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · infantil</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -10122,7 +10307,8 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#E63946" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -10191,6 +10377,9 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
 }
 
 .intro {
+  position: absolute; inset: 0;
+}
+.intro-content {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
@@ -10422,10 +10611,12 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · infantil</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -10442,7 +10633,8 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#E63946" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -10511,6 +10703,9 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
 }
 
 .intro {
+  position: absolute; inset: 0;
+}
+.intro-content {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
@@ -10742,10 +10937,12 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · infantil</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -10762,7 +10959,8 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#E63946" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -10833,6 +11031,9 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
 
 .intro {
   position: absolute; inset: 0;
+}
+.intro-content {
+  position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
 }
@@ -11080,10 +11281,12 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · tech</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -11100,7 +11303,8 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#39FF6B" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -11170,6 +11374,9 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
 }
 
 .intro {
+  position: absolute; inset: 0;
+}
+.intro-content {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
@@ -11418,10 +11625,12 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · tech</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -11438,7 +11647,8 @@ html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#39FF6B" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);
@@ -11508,6 +11718,9 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
 }
 
 .intro {
+  position: absolute; inset: 0;
+}
+.intro-content {
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
@@ -11756,10 +11969,12 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
     </div>
 
     <div class="clip intro" data-start="0" data-duration="2" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · tech</div>
       <div class="title">El dragón curioso</div>
       <div class="byline">Marcos · 6 años</div>
 
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -11776,7 +11991,8 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, 1.70);
+    tl.set(".intro-content", { opacity: 0 }, 2.00);
 
   tl.set("#page-0 [data-word='0']", { color: "#39FF6B" }, 2.000);
   tl.set("#page-0 [data-word='0']", { className: "+=active" }, 2.000);

@@ -27,8 +27,8 @@ export function register(program: Command): void {
         .default('x,tiktok,instagram,youtube'),
     )
     .option('--dry-run', 'render videos locally but do not upload', false)
-    .option('--skip-transcription', 'skip whisper word-level transcription (videos will have no captions)', false)
-    .option('--allow-no-captions', 'continue (with empty captions) even if whisper crashes; default is to abort', false)
+    .option('--skip-transcription', 'skip Whisper (audio-story slide rendering still requires a transcript)', false)
+    .option('--allow-no-captions', 'continue after Whisper fails (audio-story slides still fail without a transcript)', false)
     .option('--force', 'bypass the 24-hour idempotency guard (republish even if already published today)', false)
     .option('--no-moderation', 'skip the Spanish caption blocklist (debugging only; not recommended)')
     .option('--reason <text>', 'reason to record in the decision log', 'scheduled daily publication')
@@ -44,12 +44,12 @@ Platforms:
 
 Exit codes:
   0 → every selected platform succeeded
-  1 → at least one platform failed, or whisper crashed without --allow-no-captions
+  1 → at least one platform failed, or transcription aborted the run
 
-By default, if whisper transcription crashes we abort BEFORE rendering to avoid
-publishing videos with no captions. Use --skip-transcription to deliberately opt
-out of captions (sets captionStatus=skipped), or --allow-no-captions to survive a
-whisper failure (sets captionStatus=failed and records a warning).
+Audio-story slide rendering requires a non-empty word-level transcript.
+--skip-transcription and --allow-no-captions do not enable rendering without
+subtitles: audio-story slides fail if transcription is skipped or fails.
+Prepared video, image-post and text bundles bypass Whisper automatically.
 
 The decision log at data/decisions.jsonl records every attempt with reason+result.
 `)
@@ -57,7 +57,7 @@ The decision log at data/decisions.jsonl records every attempt with reason+resul
       const platforms = parsePlatforms(opts.platforms);
       const ctx = buildTenantBundle(opts.tenant);
       const brand = brandFromTenant(ctx.tenant);
-      const orch = new Orchestrator({ adapters: ctx.adapters, decisions: ctx.decisions });
+      const orch = new Orchestrator(ctx.orchestratorDeps);
       const report = await orch.publish({
         ...resolvePublishSource(opts),
         platforms,
@@ -71,8 +71,6 @@ The decision log at data/decisions.jsonl records every attempt with reason+resul
       });
       if (opts.json) printJson(report);
       else console.log('\n' + JSON.stringify(report, null, 2));
-      if (report.fatalCaptionFailure) process.exit(1);
-      const failed = report.results.filter(r => !r.success);
-      process.exit(failed.length > 0 ? 1 : 0);
+      process.exitCode = report.fatalCaptionFailure || report.results.some(r => !r.success) ? 1 : 0;
     });
 }

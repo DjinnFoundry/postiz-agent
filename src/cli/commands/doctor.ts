@@ -28,6 +28,8 @@ needs-config, needs-human) or when >0 stuck slugs are detected.
         decisions: ctx.decisions.list(),
         audiokidsDir: ctx.tenant.audiokids.outputDir,
         postizApiKey: ctx.tenant.postiz.apiKey,
+        postizApiUrl: ctx.tenant.postiz.apiUrl,
+        youtubecliPath: ctx.tenant.youtubecli.path,
         listIntegrations: () => ctx.postiz().listIntegrations(),
         uploadCache: summaries.uploadCache,
         themeDecisions: summaries.themeDecisions,

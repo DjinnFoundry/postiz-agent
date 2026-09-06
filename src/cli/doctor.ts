@@ -39,6 +39,8 @@ export interface DoctorInput {
   decisions?: DecisionLogEntry[];
   audiokidsDir?: string;
   postizApiKey?: string;
+  postizApiUrl?: string;
+  youtubecliPath?: string;
   listIntegrations?: () => Promise<PostizIntegration[]>;
   uploadCache?: { count: number; oldestUploadedAt: string | null; exists: boolean };
   themeDecisions?: { count: number; exists: boolean };
@@ -51,7 +53,9 @@ export async function runDoctor(input: DoctorInput = {}): Promise<DoctorReport> 
   const decisions = input.decisions ?? new DecisionLog().list();
   const audiokidsDir = input.audiokidsDir ?? config.audiokids.outputDir;
   const postizApiKey = input.postizApiKey ?? config.postiz.apiKey;
-  const listIntegrations = input.listIntegrations ?? (() => new PostizClient().listIntegrations());
+  const postizApiUrl = input.postizApiUrl ?? config.postiz.apiUrl;
+  const youtubecliPath = input.youtubecliPath ?? config.youtubecli.path;
+  const listIntegrations = input.listIntegrations ?? (() => new PostizClient(postizApiUrl, postizApiKey).listIntegrations());
   const uploadCache = input.uploadCache ?? new UploadCache().summarize();
   const themeDecisions = input.themeDecisions ?? new ThemeDecisionStore().summarize();
 
@@ -61,11 +65,11 @@ export async function runDoctor(input: DoctorInput = {}): Promise<DoctorReport> 
     name: 'environment',
     items: [
       boolItem('POSTIZ_API_KEY set', Boolean(postizApiKey), 'needs-config', 'POSTIZ_API_KEY missing from .env'),
-      boolItem('YouTubeCLI project path exists', existsSync(config.youtubecli.path), 'warn', `not found at ${config.youtubecli.path}`),
+      boolItem('YouTubeCLI project path exists', existsSync(youtubecliPath), 'warn', `not found at ${youtubecliPath}`),
     ],
   });
 
-  sections.push({ name: 'postiz', items: await buildPostizSection(postizApiKey, listIntegrations) });
+  sections.push({ name: 'postiz', items: await buildPostizSection(postizApiKey, postizApiUrl, listIntegrations) });
   sections.push({ name: 'audiokids', items: buildAudiokidsSection(audiokidsDir) });
   sections.push({ name: 'stuck-slugs', items: buildStuckSection(decisions, now) });
   sections.push({ name: 'recent-failures', items: buildRecentFailuresSection(decisions) });
@@ -82,9 +86,10 @@ function boolItem(label: string, ok: boolean, failStatus: DoctorStatus, failHint
 
 async function buildPostizSection(
   apiKey: string,
+  apiUrl: string,
   listIntegrations: () => Promise<PostizIntegration[]>,
 ): Promise<DoctorItem[]> {
-  const probe = await probePostizIntegrations(apiKey, listIntegrations);
+  const probe = await probePostizIntegrations(apiKey, listIntegrations, apiUrl);
   if (probe.kind === 'no-api-key') {
     return [{
       label: 'postiz integrations',

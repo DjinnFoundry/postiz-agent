@@ -179,6 +179,9 @@ html, body { width: ${width}px; height: ${height}px; overflow: hidden; backgroun
 
 .intro {
   position: absolute; inset: 0;
+}
+.intro-content {
+  position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 10%; text-align: center; gap: 36px;
 }
@@ -535,11 +538,13 @@ ${scrollBordersMarkup}
     </div>
 
     <div class="clip intro" data-start="0" data-duration="${HEAD_SEC}" data-track-index="1">
+      <div class="intro-content">
       <div class="kicker">un audiocuento · ${escHtml(theme.treatment.family)}</div>
       <div class="title">${escHtml(title)}</div>
       <div class="byline">${escHtml(byline ?? '')}</div>
       ${stampMarkup}
       ${renderPartRibbon(story)}
+      </div>
     </div>
 
     <audio id="narration" class="clip"
@@ -553,7 +558,8 @@ ${pageBlocks}
 
   <script>
     const tl = gsap.timeline({ paused: true });
-    tl.fromTo(".intro", { opacity: 1 }, { opacity: 0, duration: 0.3 }, ${(HEAD_SEC - 0.3).toFixed(2)});
+    tl.fromTo(".intro-content", { opacity: 1 }, { opacity: 0, duration: 0.3 }, ${(HEAD_SEC - 0.3).toFixed(2)});
+    tl.set(".intro-content", { opacity: 0 }, ${HEAD_SEC.toFixed(2)});
 
 ${gsapLines}
 

@@ -1,8 +1,10 @@
 import type { Command } from 'commander';
-import { loadTenant } from '../../core/tenant.js';
+import { buildTenantBundle } from '../tenant-context.js';
+import { DEFAULT_ADAPTER } from '../../adapters/registry.js';
+import { validateSlug } from '../../lib/slug.js';
 import { brandFromTenant } from '../../copy/brand.js';
 import { buildCaptionRich } from '../../copy/caption-builder.js';
-import type { Platform } from '../../types.js';
+import { PlatformSchema, type Platform } from '../../types.js';
 import { resolveBundle } from '../runner.js';
 import { printJsonPretty } from '../io.js';
 
@@ -45,14 +47,18 @@ Examples:
           '  postiz-agent copy preview --id dragon-marcos',
           '  postiz-agent copy preview --id dragon-marcos --platform instagram --json',
         ].join('\n'));
-        process.exit(0);
+        process.exitCode = 0;
+        return;
       }
-      const bundle = resolveBundle(opts);
-      const tenantContext = loadTenant(opts.tenant ?? 'default');
-      const brand = brandFromTenant(tenantContext);
+      if (opts.id && opts.bundleFile) throw new Error('pass either --id or --bundle-file, not both');
       const platforms: Platform[] = opts.platform
-        ? [opts.platform as Platform]
+        ? [PlatformSchema.parse(opts.platform)]
         : ['x', 'tiktok', 'instagram', 'youtube'];
+      const ctx = buildTenantBundle(opts.tenant ?? 'default');
+      const bundle = opts.bundleFile
+        ? resolveBundle(opts)
+        : ctx.adapters.get(DEFAULT_ADAPTER).loadBundle(validateSlug(opts.id!));
+      const brand = brandFromTenant(ctx.tenant);
       const out: Record<string, unknown> = {};
       for (const p of platforms) {
         const rich = buildCaptionRich({ bundle, platform: p, brand });

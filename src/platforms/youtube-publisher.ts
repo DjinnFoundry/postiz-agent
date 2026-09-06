@@ -1,5 +1,6 @@
 import type { PublishContext } from './base.js';
 import { VideoPublisher } from './base.js';
+import { SlideVideoBuilder } from '../media/slide-video.js';
 import { YoutubeAdapter } from './youtube.js';
 import { buildCaption } from '../copy/caption-builder.js';
 import { deriveHashtags } from '../copy/hashtags.js';
@@ -10,7 +11,7 @@ const DEFAULT_YOUTUBE_TAGS = ['audiocuento', 'cuentos infantiles'];
 export class YoutubePublisher extends VideoPublisher {
   readonly platform: Platform = 'youtube';
 
-  constructor(private readonly adapter: YoutubeAdapter = new YoutubeAdapter()) { super(); }
+  constructor(private readonly adapter: YoutubeAdapter = new YoutubeAdapter(), slides?: SlideVideoBuilder) { super(slides); }
 
   protected async upload(mediaPath: string | null, ctx: PublishContext): Promise<Partial<PublishResult>> {
     if (!mediaPath) {
@@ -32,8 +33,9 @@ export class YoutubePublisher extends VideoPublisher {
    *  with their own tags); falls back to the AudioKids default + bundle mood
    *  for back-compat with single-tenant deployments. */
   private resolveTags(ctx: PublishContext): string[] {
-    const mood = ctx.bundle.theme?.mood;
     const brandPool = ctx.brand?.hashtags;
+    if (ctx.bundle.kind !== 'audio-story') return [...(brandPool ?? [])];
+    const mood = ctx.bundle.theme?.mood;
     if (brandPool?.length) {
       const tags = [...brandPool];
       if (mood && !tags.includes(mood)) tags.push(mood);

@@ -20,18 +20,24 @@ export function register(program: Command): void {
     .option('-a, --adapter <name>', `which BundleAdapter to load the id from (default: ${DEFAULT_ADAPTER})`, DEFAULT_ADAPTER)
     .option('--bundle-file <path>', 'path to a JSON file with a complete ContentBundle (bypasses any adapter)')
     .option('-p, --platforms <list>', 'comma-separated platforms', 'tiktok,instagram,youtube,x')
-    .option('--skip-transcription', 'skip whisper (no captions)', false)
-    .option('--allow-no-captions', 'continue (with empty captions) even if whisper crashes; default is to abort', false)
+    .option('--skip-transcription', 'skip Whisper (audio-story slide rendering still requires a transcript)', false)
+    .option('--allow-no-captions', 'continue after Whisper fails (audio-story slides still fail without a transcript)', false)
     .option('--json', 'emit only the JSON report on stdout', false)
     .addHelpText('after', `
-Produces tmp/<id>/<id>-<platform>.mp4 files. Useful for previewing before
+For audio-story bundles, produces MP4 files under tmp/ (tmp/<tenant>/ for named
+tenants). File URLs in the report identify the previews. Useful before
 running the full publish pipeline. Internally equivalent to 'publish --dry-run'.
+
+Audio-story slide rendering requires a non-empty word-level transcript.
+--skip-transcription and --allow-no-captions do not enable rendering without
+subtitles: audio-story slides fail if transcription is skipped or fails.
+Prepared video, image-post and text bundles bypass Whisper automatically.
 `)
     .action(async (opts) => {
       const platforms = parsePlatforms(opts.platforms);
       const ctx = buildTenantBundle(opts.tenant);
       const brand = brandFromTenant(ctx.tenant);
-      const orch = new Orchestrator({ adapters: ctx.adapters, decisions: ctx.decisions });
+      const orch = new Orchestrator(ctx.orchestratorDeps);
       const report = await orch.publish({
         ...resolvePublishSource(opts),
         platforms,
@@ -43,7 +49,6 @@ running the full publish pipeline. Internally equivalent to 'publish --dry-run'.
       });
       if (opts.json) printJson(report);
       else console.log('\n' + JSON.stringify(report, null, 2));
-      if (report.fatalCaptionFailure) process.exit(1);
-      process.exit(report.results.every(r => r.success) ? 0 : 1);
+      process.exitCode = report.fatalCaptionFailure || report.results.some(r => !r.success) ? 1 : 0;
     });
 }

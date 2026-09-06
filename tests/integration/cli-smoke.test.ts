@@ -1,32 +1,96 @@
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 
 const ROOT = resolve(__dirname, '..', '..');
+const POSTIZ_URL = 'http://127.0.0.1:1/public/v1';
+let workspace: string;
+
+beforeAll(() => {
+  // config resolves its paths from import.meta.url, so changing cwd alone would
+  // still read the operator's .env and mutate their data. Copy only source and
+  // checked-in fixtures, and share dependencies without sharing runtime state.
+  workspace = mkdtempSync(resolve(tmpdir(), 'postiz-cli-smoke-'));
+  for (const path of ['src', 'hyperframes/themes', 'tests/fixtures/audiokids-output', 'package.json', 'tsconfig.json']) {
+    cpSync(resolve(ROOT, path), resolve(workspace, path), { recursive: true });
+  }
+  symlinkSync(resolve(ROOT, 'node_modules'), resolve(workspace, 'node_modules'), 'dir');
+  mkdirSync(resolve(workspace, 'smoke-bin'));
+  for (const [name, flag] of Object.entries({ ffmpeg: '-version', ffprobe: '-version', whisper: '--help', npx: '--version' })) {
+    const replies: Record<string, string> = { [JSON.stringify([flag])]: 'smoke fixture\n' };
+    if (name === 'ffprobe') {
+      const audio = resolve(workspace, 'tests', 'fixtures', 'audiokids-output', 'dragon-marcos.mp3');
+      replies[JSON.stringify(['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', audio])] = '180\n';
+      // Deliberately below the production minimum: dispatch exercises a complete
+      // rejected preflight, without starting Whisper or a renderer.
+      replies[JSON.stringify(['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=bit_rate', '-of', 'csv=p=0', audio])] = '32000\n';
+    }
+    const script = resolve(workspace, 'smoke-bin', `${name}.mjs`);
+    writeFileSync(script, `#!${process.execPath}
+import { appendFileSync } from 'node:fs';
+const output = ${JSON.stringify(replies)}[JSON.stringify(process.argv.slice(2))];
+if (output !== undefined) {
+  process.stdout.write(output);
+} else {
+  appendFileSync(process.env.SMOKE_UNEXPECTED_CALLS, JSON.stringify(process.argv) + '\\n');
+  process.exitCode = 1;
+}
+`, { mode: 0o755 });
+    symlinkSync(script, resolve(workspace, 'smoke-bin', name));
+  }
+  writeFileSync(resolve(workspace, 'smoke-network.mjs'), `
+import { appendFileSync } from 'node:fs';
+globalThis.fetch = async (input, options) => {
+  if (String(input) === 'http://127.0.0.1:1/' && options?.method === 'GET') {
+    return new Response('', { status: 200 });
+  }
+  appendFileSync(process.env.SMOKE_UNEXPECTED_CALLS, 'unexpected fetch: ' + String(input) + '\\n');
+  throw new Error('network disabled in CLI smoke tests');
+};
+`);
+});
+
+beforeEach(() => {
+  for (const path of ['data', 'tmp', 'tenants', 'empty-audiokids']) {
+    rmSync(resolve(workspace, path), { recursive: true, force: true });
+  }
+  mkdirSync(resolve(workspace, 'tmp'));
+  mkdirSync(resolve(workspace, 'empty-audiokids'));
+  mkdirSync(resolve(workspace, 'tenants', 'smoke-tenant'), { recursive: true });
+  writeFileSync(resolve(workspace, 'tenants', 'smoke-tenant', 'config.json'), JSON.stringify({
+    postiz: { apiUrl: POSTIZ_URL, apiKey: 'smoke-fixture-key' },
+  }));
+});
+
+afterAll(() => {
+  if (workspace) rmSync(workspace, { recursive: true, force: true });
+});
 
 function runCli(args: string[], opts: { timeout?: number; env?: Record<string, string> } = {}) {
-  // Invoke tsx directly: pnpm and `pnpm exec` both print a header line that
-  // contaminates JSON stdout; the .bin shim does not.
-  // Tests pin AUDIOKIDS_OUTPUT_DIR at the in-tree fixture so smokes stay
-  // hermetic regardless of what the developer's .env points at in real use.
-  const tsx = resolve(ROOT, 'node_modules', '.bin', 'tsx');
-  const result = spawnSync(tsx, ['src/cli.ts', ...args], {
-    cwd: ROOT,
+  const unexpectedCalls = resolve(workspace, 'tmp', 'unexpected-calls.log');
+  const result = spawnSync(process.execPath, ['--import', 'tsx', '--import', './smoke-network.mjs', 'src/cli.ts', ...args], {
+    cwd: workspace,
     encoding: 'utf-8',
-    timeout: opts.timeout ?? 30_000,
+    timeout: opts.timeout ?? 15_000,
+    // No inherited credentials, NODE_OPTIONS, .env, PATH tools, or service URLs.
     env: {
-      ...process.env,
+      PATH: resolve(workspace, 'smoke-bin'),
       NO_COLOR: '1',
-      AUDIOKIDS_OUTPUT_DIR: resolve(ROOT, 'tests', 'fixtures', 'audiokids-output'),
+      TZ: 'UTC',
+      POSTIZ_API_URL: POSTIZ_URL,
+      POSTIZ_API_KEY: '',
+      AUDIOKIDS_OUTPUT_DIR: resolve(workspace, 'tests', 'fixtures', 'audiokids-output'),
+      YOUTUBECLI_PATH: resolve(workspace, 'missing-youtubecli'),
+      SMOKE_UNEXPECTED_CALLS: unexpectedCalls,
       ...(opts.env ?? {}),
     },
   });
-  return {
-    status: result.status,
-    stdout: result.stdout,
-    stderr: result.stderr,
-  };
+  expect(result.error, `CLI failed to finish: ${args.join(' ')}\n${result.stderr}`).toBeUndefined();
+  expect(result.signal, `CLI terminated: ${args.join(' ')}\n${result.stderr}`).toBeNull();
+  expect(existsSync(unexpectedCalls) ? readFileSync(unexpectedCalls, 'utf-8') : '', 'unexpected network/media execution').toBe('');
+  return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 }
 
 describe('CLI smoke: top-level --help', () => {
@@ -48,14 +112,14 @@ describe('CLI smoke: adapters list', () => {
     const audiokids = list.find((a: { name: string }) => a.name === 'audiokids');
     expect(audiokids).toBeDefined();
     expect(audiokids).toHaveProperty('description');
-    expect(typeof audiokids.candidateCount).toBe('number');
+    expect(audiokids.candidateCount).toBe(1);
   });
 });
 
 describe('CLI smoke: publish accepts --bundle-file (no AudioKids needed)', () => {
-  it('--dry-run with an inline bundle renders without touching any adapter', () => {
-    const bundlePath = resolve(ROOT, 'tmp', 'smoke-inline-bundle.json');
-    mkdirSync(resolve(ROOT, 'tmp'), { recursive: true });
+  it('--dry-run accepts an inline bundle and returns a complete JSON report', () => {
+    const bundlePath = resolve(workspace, 'tmp', 'smoke-inline-bundle.json');
+    mkdirSync(resolve(workspace, 'tmp'), { recursive: true });
     const bundle = {
       id: 'smoke-inline-bundle',
       kind: 'audio-story',
@@ -74,12 +138,10 @@ describe('CLI smoke: publish accepts --bundle-file (no AudioKids needed)', () =>
       '--skip-transcription',
       '--json',
     ], { timeout: 15_000 });
-    expect([0, 1]).toContain(status);
-    // publish prints the orchestrator log lines first; the JSON report is the final line.
-    const lastLine = stdout.trim().split('\n').filter(Boolean).at(-1)!;
-    const report = JSON.parse(lastLine);
+    expect(status).toBe(0);
+    const report = JSON.parse(stdout);
     expect(report.slug).toBe('smoke-inline-bundle');
-    expect(Array.isArray(report.results)).toBe(true);
+    expect(report.results).toEqual([expect.objectContaining({ platform: 'spotify', success: true, skipped: true })]);
   });
 
   it('rejects when both --slug and --bundle-file are passed', () => {
@@ -109,52 +171,79 @@ describe('CLI smoke: tenants list', () => {
 });
 
 describe('CLI smoke: publish --tenant isolates data dir', () => {
-  it('persists the decision under data/<tenant>/decisions.jsonl', () => {
+  it('records an RSS-only skip under data/<tenant>/decisions.jsonl', () => {
     const tenantSlug = 'smoke-tenant';
-    const tenantDataDir = resolve(ROOT, 'data', tenantSlug);
-    // Clean up any previous run
-    try { runCli(['tenants', 'list']); } catch { /* noop */ }
-    const bundlePath = resolve(ROOT, 'tmp', 'smoke-tenant-bundle.json');
-    mkdirSync(resolve(ROOT, 'tmp'), { recursive: true });
+    const tenantDataDir = resolve(workspace, 'data', tenantSlug);
+    const bundlePath = resolve(workspace, 'tmp', 'smoke-tenant-bundle.json');
+    mkdirSync(resolve(workspace, 'tmp'), { recursive: true });
     writeFileSync(bundlePath, JSON.stringify({
       id: 'tenant-isolation-test',
       kind: 'text',
       text: { title: 'tenant test', body: 'aislamiento de datos' },
       locale: 'es',
     }));
-    const { status } = runCli([
+    // Spotify is always a local preflight skip; this records a decision without
+    // invoking a publisher, transcription, media tooling, or a remote service.
+    const { status, stdout } = runCli([
       'publish',
       '--tenant', tenantSlug,
       '--bundle-file', bundlePath,
-      '--platforms', 'x',
-      '--dry-run',
-      '--skip-transcription',
+      '--platforms', 'spotify',
       '--json',
-    ], { timeout: 15_000 });
-    expect([0, 1]).toContain(status);
-    // The tenant data dir + decisions log must exist after the call.
-    const { existsSync } = require('node:fs');
-    expect(existsSync(tenantDataDir)).toBe(true);
-    expect(existsSync(resolve(tenantDataDir, 'decisions.jsonl'))).toBe(true);
-    // Cleanup
-    const { rmSync } = require('node:fs');
-    rmSync(tenantDataDir, { recursive: true, force: true });
+    ]);
+    expect(status, stdout).toBe(0);
+    expect(JSON.parse(stdout).results).toEqual([expect.objectContaining({ platform: 'spotify', success: true, skipped: true })]);
+    const decisions = readFileSync(resolve(tenantDataDir, 'decisions.jsonl'), 'utf-8').trim().split('\n').map(line => JSON.parse(line));
+    expect(decisions).toEqual([expect.objectContaining({ storySlug: 'tenant-isolation-test', platform: 'spotify' })]);
+    expect(existsSync(resolve(workspace, 'data', 'decisions.jsonl'))).toBe(false);
+  });
+
+  it('dry-run succeeds without adding a publication to any decision log', () => {
+    const bundlePath = resolve(workspace, 'tmp', 'dry-run-bundle.json');
+    writeFileSync(bundlePath, JSON.stringify({
+      id: 'dry-run-test', kind: 'text', text: { body: 'Publicación de prueba.' }, locale: 'es',
+    }));
+    const { stdout, stderr, status } = runCli([
+      'publish', '--tenant', 'smoke-tenant', '--bundle-file', bundlePath,
+      '--platforms', 'x', '--dry-run', '--json',
+    ]);
+    expect(status, stderr || stdout).toBe(0);
+    expect(JSON.parse(stdout).results).toEqual([expect.objectContaining({ platform: 'x', success: true, skipped: true, reason: 'dry-run' })]);
+    expect(existsSync(resolve(workspace, 'data', 'smoke-tenant', 'decisions.jsonl'))).toBe(false);
+    expect(existsSync(resolve(workspace, 'data', 'decisions.jsonl'))).toBe(false);
+  });
+});
+
+describe('CLI smoke: unknown tenant', () => {
+  it('rejects an unconfigured tenant without creating its data directory', () => {
+    const { status, stderr } = runCli(['dispatch', '--tenant', 'missing-tenant', '--dry-run', '--json']);
+    expect(status).toBe(1);
+    expect(stderr).toMatch(/missing-tenant/);
+    expect(existsSync(resolve(workspace, 'data', 'missing-tenant'))).toBe(false);
   });
 });
 
 describe('CLI smoke: dispatch --adapter', () => {
-  it('lists candidates from the named adapter (default audiokids)', () => {
+  it('dispatches a fixture candidate and emits its rejected preflight as complete JSON', () => {
     const { stdout, status } = runCli([
       'dispatch',
       '--adapter', 'audiokids',
-      '--platforms', 'tiktok',
+      '--platforms', 'x',
       '--dry-run',
       '--json',
     ], { timeout: 10_000 });
-    expect([0, 1]).toContain(status);
-    const first = stdout.trim().split('\n')[0];
-    const parsed = JSON.parse(first);
-    expect(parsed).toHaveProperty('dispatched');
+    expect(status).toBe(1);
+    const parsed = JSON.parse(stdout);
+    expect(parsed).toMatchObject({ dispatched: true, slug: 'dragon-marcos', adapter: 'audiokids', platforms: ['x'], tenant: 'default' });
+    expect(parsed.report.results).toEqual([expect.objectContaining({
+      platform: 'x', success: false, skipped: true, reason: expect.stringContaining('below minimum'),
+    })]);
+  });
+
+  it('does not dispatch individual episodes to the RSS-only Spotify target', () => {
+    const { stdout, status } = runCli(['dispatch', '--platforms', 'spotify', '--dry-run', '--json']);
+    expect(status).toBe(0);
+    expect(JSON.parse(stdout)).toEqual({ dispatched: false, reason: 'nothing pending', tenant: 'default' });
   });
 
   it('exits non-zero with a clear error for an unknown adapter', () => {
@@ -171,7 +260,8 @@ describe('CLI smoke: dispatch --adapter', () => {
 
 describe('CLI smoke: status --json', () => {
   it('returns deps array + system panel with tool/treatment/decision counts', () => {
-    const { stdout } = runCli(['status', '--json']);
+    const { stdout, status } = runCli(['status', '--json']);
+    expect(status).toBe(0);
     const report = JSON.parse(stdout);
     expect(report).toHaveProperty('generatedAt');
     expect(Array.isArray(report.deps)).toBe(true);
@@ -205,29 +295,24 @@ describe('CLI smoke: status --json', () => {
 
 describe('CLI smoke: dispatch rejects without candidates', () => {
   it('returns dispatched:false when no slug is eligible', () => {
-    // Fixture state is non-deterministic (depends on decision log); both
-    // shapes are valid, we only assert the payload parses with expected keys.
-    const { stdout } = runCli(['dispatch', '--platforms', 'tiktok', '--dry-run', '--json'], { timeout: 10_000 });
-    const first = stdout.trim().split('\n')[0];
-    const parsed = JSON.parse(first);
-    expect(parsed).toHaveProperty('dispatched');
-    if (parsed.dispatched === false) {
-      expect(parsed).toHaveProperty('reason');
-    } else {
-      expect(parsed).toHaveProperty('slug');
-      expect(parsed).toHaveProperty('platforms');
-    }
+    const { stdout, status } = runCli(['dispatch', '--platforms', 'tiktok', '--dry-run', '--json'], {
+      env: { AUDIOKIDS_OUTPUT_DIR: resolve(workspace, 'empty-audiokids') },
+    });
+    expect(status).toBe(0);
+    expect(JSON.parse(stdout)).toEqual({ dispatched: false, reason: 'nothing pending', tenant: 'default' });
   });
 });
 
 describe('CLI smoke: rss produces valid XML', () => {
   it('writes a feed.xml to the requested path', () => {
-    const out = resolve(ROOT, 'tmp', 'smoke-feed.xml');
+    const out = resolve(workspace, 'tmp', 'smoke-feed.xml');
     const { status } = runCli(['rss', '--output', out]);
     expect(status).toBe(0);
     const xml = readFileSync(out, 'utf-8');
     expect(xml).toContain('<?xml');
     expect(xml).toContain('<rss');
+    expect(xml).toContain('<guid isPermaLink="false">dragon-marcos</guid>');
+    expect(xml).toContain('<itunes:duration>180</itunes:duration>');
   });
 });
 
@@ -266,8 +351,8 @@ describe('CLI smoke: doctor --json', () => {
     for (const n of ['environment', 'postiz', 'audiokids', 'stuck-slugs', 'recent-failures', 'upload-cache', 'theme-decisions']) {
       expect(names).toContain(n);
     }
-    // Exit is 0 or 1 depending on real environment state; both are valid shapes.
-    expect([0, 1]).toContain(status);
+    expect(report.ok).toBe(false);
+    expect(status).toBe(1); // The fixture deliberately has no Postiz API key.
   });
 });
 
@@ -316,8 +401,8 @@ describe('CLI smoke: cta-ab --json --days 30', () => {
   });
 
   it('accepts --ingest and reports ingestApplied=true with the file path echoed back', () => {
-    const tmpFile = resolve(ROOT, 'tmp', 'cta-ab-ingest-smoke.jsonl');
-    mkdirSync(resolve(ROOT, 'tmp'), { recursive: true });
+    const tmpFile = resolve(workspace, 'tmp', 'cta-ab-ingest-smoke.jsonl');
+    mkdirSync(resolve(workspace, 'tmp'), { recursive: true });
     writeFileSync(tmpFile, '', 'utf-8');
     const { stdout, status } = runCli(['cta-ab', '--json', '--days', '30', '--ingest', tmpFile]);
     expect(status).toBe(0);
@@ -539,8 +624,7 @@ describe('CLI smoke: copy preview without --id or --bundle-file', () => {
 
 describe('CLI smoke: run-pipeline --stream emits NDJSON per step', () => {
   it('one JSON object per completed step, and a final summary line', () => {
-    const ROOT_LOCAL = resolve(__dirname, '..', '..');
-    const tmpDir = resolve(ROOT_LOCAL, 'tmp', 'stream-smoke');
+    const tmpDir = resolve(workspace, 'tmp', 'stream-smoke');
     mkdirSync(tmpDir, { recursive: true });
 
     const bundlePath = resolve(tmpDir, 'smoke-bundle.json');
@@ -566,10 +650,10 @@ describe('CLI smoke: run-pipeline --stream emits NDJSON per step', () => {
       '--bundle-file', bundlePath,
       '--stream',
     ]);
-    expect([0, 1]).toContain(status);
+    expect(status).toBe(0);
 
     const lines = stdout.split('\n').map(l => l.trim()).filter(Boolean);
-    expect(lines.length).toBeGreaterThanOrEqual(2);
+    expect(lines).toHaveLength(3);
 
     const parsed = lines.map(l => {
       try { return JSON.parse(l); } catch { return null; }
@@ -578,8 +662,8 @@ describe('CLI smoke: run-pipeline --stream emits NDJSON per step', () => {
       expect(p).not.toBeNull();
     }
     const stepLines = parsed.filter((p): p is { type: string } => !!p && (p as { type?: string }).type === 'step');
-    expect(stepLines.length).toBeGreaterThanOrEqual(2);
+    expect(stepLines).toHaveLength(2);
     const summaryLines = parsed.filter((p): p is { type: string } => !!p && (p as { type?: string }).type === 'summary');
-    expect(summaryLines.length).toBe(1);
+    expect(summaryLines).toEqual([expect.objectContaining({ ok: true, stepCount: 2 })]);
   });
 });

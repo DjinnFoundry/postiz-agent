@@ -18,7 +18,7 @@ function optionalInt(name: string, fallback: number): number {
 
 export const config = {
   postiz: {
-    apiUrl: optional('POSTIZ_API_URL', 'http://localhost:5000/public/v1'),
+    apiUrl: optional('POSTIZ_API_URL', 'http://localhost:4007/api/public/v1'),
     apiKey: optional('POSTIZ_API_KEY'),
   },
   audiokids: {
@@ -59,16 +59,19 @@ export const config = {
  * non-localhost host. Set POSTIZ_ALLOW_INSECURE=1 to opt out of the TLS check
  * (only for trusted private networks).
  */
-export function assertPostizConfigured(): void {
-  if (!config.postiz.apiKey) {
+export function assertPostizConfigured(postiz = config.postiz): void {
+  if (!postiz.apiKey.trim()) {
     throw new Error(
       `POSTIZ_API_KEY is not set. Add it to .env (see .env.example). ` +
-      `You can find your key at ${config.postiz.apiUrl.replace(/\/public\/v1$/, '')}/settings/developers.`,
+      `You can find your key at ${postiz.apiUrl.replace(/\/(?:api\/)?public\/v1\/?$/, '')}/settings/developers.`,
     );
   }
+  const url = new URL(postiz.apiUrl);
+  if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
+    throw new Error('POSTIZ_API_URL must be an HTTP(S) base URL without credentials, query, or fragment');
+  }
   if (process.env.POSTIZ_ALLOW_INSECURE === '1') return;
-  const url = new URL(config.postiz.apiUrl);
-  const isLocal = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '::1';
+  const isLocal = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]';
   if (url.protocol !== 'https:' && !isLocal) {
     throw new Error(
       `POSTIZ_API_URL is http:// on a non-localhost host (${url.hostname}). ` +

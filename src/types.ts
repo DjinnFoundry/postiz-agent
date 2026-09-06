@@ -158,6 +158,8 @@ export interface PublishResult {
   platform: Platform;
   success: boolean;
   postId?: string;
+  /** Publication time accepted by the provider, retained for multipart resumption. */
+  scheduledDate?: string;
   url?: string;
   error?: string;
   /** Classified error kind when success=false. Drives retry/backoff/dispatch gating. */
