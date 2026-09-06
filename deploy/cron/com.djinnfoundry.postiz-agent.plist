@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  launchd plist for macOS — postiz-agent dispatch daily at 08:00.
+  launchd plist for macOS: postiz-agent dispatch daily at 08:00.
 
   Install:
     cp deploy/cron/com.djinnfoundry.postiz-agent.plist ~/Library/LaunchAgents/
-    # edit the plist: replace /path/to/postiz-agent with your absolute path
+    # edit paths, tenant and platforms; build with pnpm build and create data/ first
     launchctl load ~/Library/LaunchAgents/com.djinnfoundry.postiz-agent.plist
 
   Verify:
     launchctl list | grep postiz-agent
-    tail -f /path/to/postiz-agent/data/cron.log
+    tail -f /path/to/postiz-agent/data/cron.jsonl
 
   Unload:
     launchctl unload ~/Library/LaunchAgents/com.djinnfoundry.postiz-agent.plist
@@ -22,11 +22,13 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>/opt/homebrew/bin/pnpm</string>
-    <string>dev</string>
+    <string>/opt/homebrew/bin/node</string>
+    <string>dist/cli.js</string>
     <string>dispatch</string>
+    <string>--tenant</string>
+    <string>product</string>
     <string>--platforms</string>
-    <string>x,tiktok,instagram,youtube</string>
+    <string>x,instagram</string>
     <string>--json</string>
   </array>
 
@@ -40,9 +42,9 @@
   </dict>
 
   <key>StandardOutPath</key>
-  <string>/path/to/postiz-agent/data/cron.log</string>
+  <string>/path/to/postiz-agent/data/cron.jsonl</string>
   <key>StandardErrorPath</key>
-  <string>/path/to/postiz-agent/data/cron.log</string>
+  <string>/path/to/postiz-agent/data/cron-errors.log</string>
 
   <key>EnvironmentVariables</key>
   <dict>

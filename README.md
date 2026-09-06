@@ -1,376 +1,208 @@
 # postiz-agent
 
-> Cron-driven autonomous publisher for any local MP3-first pipeline. Consumes a directory of `slug.mp3 + slug.json + slug-cover.png`, renders per-platform slide videos with word-level karaoke captions, and publishes to X, TikTok, Instagram, YouTube, and Spotify (RSS) via [Postiz](https://github.com/gitroomhq/postiz-app) self-hosted.
+A CLI for preparing and publishing product posts and AudioKids stories. X, TikTok and Instagram use the Postiz API; YouTube uses a separately configured YouTubeCLI. The RSS command builds a podcast feed locally.
 
-Extracted and open-sourced from the [AudioKids](https://audiokids.org) daily-publishing pipeline because the pattern generalises: whisper-crash-hard-stop, 24h per-platform idempotency, retry with backoff, webhook alerts after exhaustion, Spanish caption-moderation blocklist, and a JSONL decision log designed for an LLM to grep across runs.
-
-**Agents: read [`SKILL.md`](./SKILL.md) first.** It explains when to use each command, what the flags mean, and what NOT to do.
-
-## Who this is for
-
-Narrow on purpose:
-
-- You run a **local MP3-first pipeline** (AudioKids, a home-grown TTS loop, a podcast staging folder, anything that drops `slug.mp3 + slug.json` into a directory) and want a cron-driven autonomous publisher on top of it.
-- You want the publish layer **self-hosted and open-source**, not a SaaS dashboard. Postiz handles OAuth and scheduling; this agent handles the MP3 → video step and the orchestration.
-- You want an **agent-readable decision log** (`data/decisions.jsonl`) so an LLM can reason across runs without re-hitting platform APIs.
-
-Not for:
-
-- General podcasters looking for "audio → viral clips." [Headliner](https://www.headliner.app/), [Descript](https://www.descript.com/), [Opus Clip](https://www.opus.pro/), and [Recast Studio](https://recast.studio/) already do that with more visual variety and no code. Use those unless you specifically need the above.
-- Anyone who doesn't have a local MP3 pipeline and doesn't want to stand one up. Without the upstream, there's nothing to publish.
-
----
-
-## The gap it fills
-
-Postiz is a great social scheduler but it's content-agnostic — you hand it a finished post and it publishes. An MP3 pipeline produces audio files. No social platform accepts raw audio. This project is the layer that turns one into the other.
-
-```
-  local/output/                          Postiz (X/TikTok/IG adapters)
-  ├─ slug.mp3                                     ▲
-  ├─ slug.json  ─────── postiz-agent ─────────────┘
-  └─ slug-cover.png        │
-                           ├─ whisper word-level transcription
-                           ├─ HyperFrames slide video per aspect ratio
-                           ├─ external YouTube CLI (bring-your-own)
-                           └─ RSS feed (for Spotify/Apple)
-```
-
-The story's [input schema](./src/types.ts) is small (title, content, mood, beats, metadata) — adapting a non-AudioKids source is a single-file change under `src/adapters/`.
-
-### AudioKids output formats supported
-
-The bundled `audiokids` adapter reads two layouts transparently per story (you can mix them in one directory):
-
-| Layout | Files                                                | When                       |
-|--------|------------------------------------------------------|----------------------------|
-| **v2** (current) | `<outputDir>/<slug>/story.json` + `<outputDir>/<slug>/<slug>.mp3` | AudioKids since 2026-04 |
-| **v1** (legacy)  | `<outputDir>/<slug>.json` + `<outputDir>/<slug>.mp3` | Older runs / fixtures   |
-
-Detection is per-candidate, so a v2 directory can sit next to a v1 flat pair without conflict. The recipient (child name + age) comes from `story.json`'s `job.childName` / `job.childAge` in v2 and from `meta.name` / `meta.age` in v1; both default to `first-name-only` consent.
-
-## What gets published
-
-| Platform | Format | Render spec |
-|---|---|---|
-| **X** | Video | 1:1 · 1080×1080 · up to 4h (Premium) |
-| **TikTok** | Video | 9:16 · 1080×1920 · up to 10min |
-| **Instagram Reels** | Video | 9:16 · 1080×1920 · up to 3min (multi-part for longer cuentos) |
-| **YouTube** | Video | 16:9 · 1920×1080 · no limit |
-| **Spotify / Apple / Amazon** | Audio (RSS) | MP3 feed polled hourly |
-
-Each video is a slide-based composition: book-page pacing (15-25 words per slide), current-word highlight with weight + scale shift, narrator's voice as the audio track. Visual identity comes from a **theme engine** with 12 editorial treatments (magazine-style hero, midnight, rose-stamp, academic-dropcap, medieval-manuscript with gilded drop cap, mythic-scroll, epic-cinematic, terminal-CRT, storybook-pop, crayon-doodle, bubble-pastel, big-stat) across 4 families (editorial, infantil, épica, tech). Each bundle resolves to one treatment deterministically via priority: persisted decision > explicit hint > keyword match > mood candidate > fallback. See `TREATMENTS.md` for the full catalog.
-
-Instagram Reels cap at 3 minutes, so cuentos longer than that are **automatically split** into N ≤170s parts, each rendered with a treatment-styled part ribbon (`CAPÍTULO I de III` for medieval, `[PART 01/03]` for terminal, etc.) and scheduled 5 minutes apart so they land in order on your feed.
-
-## Example
-
-A one-minute story becomes four ready-to-upload MP4s with a single command:
-
-```
-$ postiz-agent render --slug dragon-marcos --platforms x,tiktok,instagram,youtube
-
-story: "El dragón curioso" (145 words, 1min)
-transcribing audio...
-  118 words → tmp/dragon-marcos/dragon-marcos.json
-→ x          dragon-marcos-x.mp4          1080×1080 · 40s · 2.3MB
-→ tiktok     dragon-marcos-tiktok.mp4     1080×1920 · 40s · 2.6MB
-→ instagram  dragon-marcos-instagram.mp4  1080×1920 · 40s · 2.6MB
-→ youtube    dragon-marcos-youtube.mp4    1920×1080 · 40s · 2.6MB
-```
-
-Swap `render` for `publish` and the same videos get uploaded through Postiz and YouTubeCLI.
+Start with the [launch and recovery guide](docs/production-readiness.md) before connecting production accounts. See [deployment](deploy/README.md) for Postiz setup and [SKILL.md](SKILL.md) for agent operating instructions.
 
 ## Install
 
-Prerequisites: Node 20+, ffmpeg, whisper (`pip install openai-whisper`), Docker (for the bundled self-hosted Postiz).
+Use **Node.js 22+** and **pnpm 10.18.1**. Clone the maintained `mainline` branch:
 
-```bash
-git clone https://github.com/DjinnFoundry/postiz-agent.git
+```sh
+git clone --branch mainline https://github.com/DjinnFoundry/postiz-agent.git
 cd postiz-agent
-pnpm install
-
-cp .env.example .env
-# edit POSTIZ_API_URL, POSTIZ_API_KEY, AUDIOKIDS_OUTPUT_DIR
-# (optional) set ALERT_WEBHOOK_URL to get a POST when a platform publish fails
-# (optional) set YOUTUBECLI_PATH if you have a YouTube CLI to delegate to;
-#            leave unset to skip YouTube
-
-# Optional: install HyperFrames skills for Claude Code / Cursor
-npx skills add heygen-com/hyperframes
+pnpm install --frozen-lockfile
+pnpm build
+node dist/cli.js --help
 ```
 
-Then deploy Postiz self-hosted and connect each platform's OAuth:
+Examples use `node dist/cli.js`; a global `postiz-agent` installation is not required. Rebuild after changing TypeScript source.
 
-```bash
-cd deploy
-cp .env.example .env
-# add X_API_KEY, X_API_SECRET, TIKTOK_CLIENT_KEY, INSTAGRAM_APP_ID, ...
-docker compose up -d
-# open http://localhost:5000 and connect X, TikTok, Instagram
-# copy the Postiz public API key back to the project's root .env
+Dependencies depend on the content:
+
+- Text and image previews do not need Whisper or a running Postiz instance.
+- Video validation and RSS duration checks need `ffprobe`.
+- Audio stories need `ffmpeg`, `ffprobe`, Whisper with word timestamps, and the HyperFrames renderer. The builder invokes the pinned `hyperframes@0.8.30`; first use can download npm/browser dependencies. `pnpm fetch-fonts` populates the optional local font cache.
+- Actual uploads need the selected provider, credentials and connected accounts. Follow [deploy/README.md](deploy/README.md) for the bundled self-hosted Postiz stack.
+
+Shared defaults come from the project-root `.env`. Copy `.env.example` only when creating a new configuration; preserve an existing `.env`. Keep API keys, tenant configurations and generated files out of commits.
+
+## Preview a product post
+
+Save this as `tmp/product-update.json` (create `tmp/` if needed):
+
+```json
+{
+  "id": "product-update-2026-09-06",
+  "kind": "text",
+  "locale": "en",
+  "text": {
+    "body": "Our new feature is ready. Explore it at https://example.com."
+  }
+}
 ```
 
-Verify:
-
-```
-$ postiz-agent status
-✓ ffmpeg installed
-✓ ffprobe installed
-✓ whisper installed
-✓ npx installed
-✓ AudioKids output dir   /path/to/audiokids/output
-✓ Postiz API reachable   http://localhost:5000/public/v1
-✓ POSTIZ_API_KEY set     present
-✓ YouTubeCLI project path /path/to/youtubecli
+```sh
+node dist/cli.js copy preview --bundle-file ./tmp/product-update.json --platform x --json
+node dist/cli.js publish --bundle-file ./tmp/product-update.json --platforms x --dry-run --json
 ```
 
-## Commands
+These commands work without publication credentials. `copy preview` returns the proposed caption. `publish --dry-run` and `render` run local preparation without uploading or writing publication decisions. Media previews may create local render files and theme/cache data. Read the returned file URLs instead of assuming a fixed output path.
 
-Full reference is in the CLI itself (`postiz-agent <cmd> --help`). Short version:
+The default tenant works without a tenant configuration. Add `--tenant <product>` when previewing that product's branding; named tenants must already have a valid configuration.
 
-**Pipeline (what agents run day-to-day)**
+### ContentBundle inputs
 
-| Command | What it does |
-|---|---|
-| `dispatch` | Autonomously pick the next story not yet published and run it. Cron-safe. Skips slugs stuck with 3+ permanent failures in 72h (transient backoff ladder 1h/4h/16h). |
-| `publish --slug <s> --platforms <list>` | Full pipeline: preflight → transcribe → moderate → render → upload |
-| `render --slug <s> --platforms <list>` | Build MP4s only, no upload |
-| `rss --output <path>` | Rebuild the Spotify / Apple RSS feed |
-| `run-pipeline <spec.json> [--id <slug>] [--stream]` | Run a declarative pipeline of tools. `--stream` emits NDJSON per step |
+`publish` and `render` accept either `--bundle-file <json>` or an adapter ID with `--id` / `--slug`, never both. The [ContentBundle schema](src/core/content-bundle.ts) is the input contract. Use a stable, unique ID containing ASCII letters, digits and hyphens, starting with a letter or digit (maximum 128 characters).
 
-**Observability and operations**
-
-| Command | What it does |
-|---|---|
-| `status [--json]` | Lightweight health snapshot (deps + counts: tools, treatments, decisions, uploads, stuck slugs, 7d success rate) |
-| `doctor [--json]` | Deep diagnostic with remediation hints per blocking issue. Exit 1 on any `permanent` / `needs-config` / `needs-human` |
-| `stats [--days N] [--platform X] [--json]` | Rollup of the decision log: totals, per-platform success rate, top remediations, CTA variant distribution |
-| `cta-ab [--days N] [--platform X] [--ingest file.jsonl] [--json]` | Per-variant success rate and sample posts. `--ingest` merges engagement data (postId, views, likes, comments) |
-| `decisions [--slug s] [--platform p] [--run-id uuid] [--stuck] [--pretty]` | Query the JSONL publish history |
-| `decisions rotate [--force] [--json]` · `decisions archives [--json]` | Rotate the active log and list archived files |
-| `decisions --reset-attempts <slug>` | Clear the stuck counter after fixing the underlying cause |
-| `logs [--slug s] [--platform p] [--tail]` · `logs prune [--older-than-days N] [--dry-run]` | Inspect captured HyperFrames stderr and prune old logs (default 30 days) |
-| `cache prune [--dry-run] [--json]` | Prune stale upload-cache entries (7d TTL) |
-
-**Theming and content**
-
-| Command | What it does |
-|---|---|
-| `themes list [--json]` | List the 12 editorial treatments |
-| `themes describe <id> [--json]` | Resolve a treatment with its palette + font pairing + layout hints + examples |
-| `themes check-decisions [--json] [--fix]` | List theme decisions stale due to catalog version bump or unknown treatment id |
-| `gallery --id <slug> [--output path] [--include-treatments a,b]` | Render the same bundle across all treatments into one HTML page for visual QA |
-| `copy preview [--id <slug>] [--platform X] [--json]` | Print the caption that would be posted, with CTA variant and teaser surfaced |
-
-**Tool introspection (for external agents)**
-
-| Command | What it does |
-|---|---|
-| `tools list [--json]` | List registered tools with their JSON schemas |
-| `tools describe <name> [--json]` | Full descriptor: input/output schemas, examples, typical next steps |
-| `tools docs [<name>]` | Human guide to all tools or one specific tool |
-| `tools call <name> --id <slug> [--input file.json]` | Invoke a single tool aisladamente (agent-level) |
-
-**Misc**
-
-| Command | What it does |
-|---|---|
-| `integrations [--json]` | List connected Postiz accounts |
-
-Every command supports `--help` and `--json` where applicable.
-
-### Reliability features (enabled by default on `publish` / `dispatch`)
-
-- **Preflight checks per platform.** Refuses early when audio is too long, bitrate too low (< 64 kbps), cover missing, or the target is RSS-only. Saves 2-3 minutes of wasted render.
-- **Error taxonomy with remediation hints.** Every failure is classified (`transient | permanent | needs-config | needs-human | unknown`) with a machine-readable `action` and a human hint. Threaded through the decision log so `doctor` can suggest remediation.
-- **Retry with exponential backoff.** Transient errors retry 3 times (~2s base, jittered). 4xx does not retry.
-- **Dispatch stuck-slug guard.** A slug with 3+ permanent failures in 72h is skipped until manually reset with `decisions --reset-attempts`. Transient failures follow a 1h/4h/16h backoff ladder.
-- **24h idempotency guard.** Skips any `(slug, platform)` that already has a successful decision in the last 24 hours. Bypass with `--force`.
-- **Postiz rate limit.** 10 req/s token bucket per PostizClient instance, with in-flight dedupe and 30s cache for `listIntegrations` across parallel publishes.
-- **Upload dedup + streaming.** SHA256 cache with 7d TTL skips re-uploading the same MP4 on retry; `openAsBlob` streams large files so a 30 MB MP4 no longer pins 30 MB of heap.
-- **Atomic render output.** Videos are written to `.tmp`, size-checked (>100KB) and duration-probed (>0s) before the final rename. Captured HyperFrames stderr goes to `data/render-logs/` for post-mortem.
-- **Webhook alerts.** Set `ALERT_WEBHOOK_URL`. After retries exhaust, the agent fires a 5s-timeout POST with `{slug, platform, error, attempts, timestamp}`. Fire-and-forget.
-- **Caption moderation (Spanish, ~120 terms + conjugations).** Words matching the blocklist are masked before render. Disable for debugging with `--no-moderation`.
-- **Whisper confidence flag.** `transcribe` can be invoked with a `minConfidence` threshold; low-confidence words are counted and reported as warnings (guards against silent hallucinations that the moderation layer would mask).
-- **Recipient consent.** `anonymous` scrubs the name from title + teaser across platforms; `first-name-only` drops surnames only; `public` leaves them as-is.
-- **`runId` correlation.** Every `publish` mints a UUID v4 that is attached to every decision log entry it produces (including IG multi-part children). Query with `decisions --run-id <uuid>`.
-- **Instagram multi-part split.** Cuentos > 3 min are auto-chunked into N ≤170s parts; treatment-styled ribbons (`CAPÍTULO I de III`, `[PART 01/03]`, ...), scheduled 5 min apart. Every part shares the same CTA variant (brand invariant).
-
-### Scheduling
-
-Ready-to-edit configs ship in `deploy/cron/`:
-
-- `crontab.example` (Linux/macOS)
-- `com.djinnfoundry.postiz-agent.plist` (macOS launchd)
-- `README.md` (systemd timer for Linux servers)
-
-The typical setup:
-
-```bash
-# Linux/macOS crontab, daily at 08:00
-0 8 * * * cd /path/to/postiz-agent && pnpm dev dispatch --platforms x,tiktok,instagram,youtube --json >> data/cron.log 2>&1
-```
-
-`dispatch` exits 0 with `{"dispatched": false, "reason": "nothing pending"}` when there is nothing to publish, so you can run it more often than your content cadence without churn.
-
-## Architecture
-
-Five layers so any agent / pipeline (not just AudioKids) can drive the toolkit:
-
-```
-L4 · entry    CLI · external agent
-L3 · pipes    pipelines (JSON specs) · orchestrator
-L2 · adapters audiokids → ContentBundle
-L1 · tools    transcribe · moderate-captions · render-slide-video · resolve-theme · choose-theme
-L0 · core     errors taxonomy · retry · decision log · idempotency · preflight · rate limit · upload cache
-```
-
-```
-src/
-├── cli.ts                       # commander entry, delegates to cli/* helpers
-├── orchestrator.ts              # bundle → preflight → transcribe → moderate → publish
-├── dispatch.ts                  # next-unpublished selection + stuck-slug backoff
-├── idempotency.ts · config.ts · types.ts
-│
-├── core/
-│   ├── content-bundle.ts        # neutral contract every tool consumes
-│   ├── tool.ts · tool-registry.ts · pipeline.ts · zod-json-schema.ts
-│   ├── errors.ts                # ClassifiedError taxonomy + remediation hints
-│   └── preflight.ts             # per-platform capability + bitrate + duration
-│
-├── adapters/                    # pipeline → ContentBundle
-│   ├── audiokids.ts
-│   └── cover-placeholder.ts     # SVG fallback cover
-│
-├── tools/                       # composable units
-│   ├── transcribe.ts            # whisper + optional minConfidence + optional trimSilence
-│   ├── moderate-captions.ts · render-slide-video.ts · resolve-theme.ts
-│
-├── theme/                       # catalog + resolver + decision store (versioned)
-│   ├── catalog.ts · resolver.ts · types.ts
-│
-├── copy/                        # caption building + CTA rotation + hashtags (multi-locale)
-│   ├── caption-builder.ts · ctas.{json,ts} · hashtags.{json,ts}
-│
-├── platforms/
-│   ├── postiz.ts                # rate-limit (10 req/s) + integration cache + SHA256 upload dedup + streaming
-│   ├── {x,tiktok,instagram,youtube,spotify}-publisher.ts
-│   ├── postiz-video-publisher.ts · instagram-split.ts · spotify-rss.ts · registry.ts · youtube.ts
-│
-├── media/
-│   ├── subtitles.ts · whisper-json.ts · caption-moderation.ts · spanish-blocklist.json
-│   ├── slide-video.ts           # staged workspace, atomic output, render-log persistence
-│   ├── render-output.ts         # finalize + persistStderr + size + duration verify
-│   └── silence.ts               # ffmpeg silencedetect wrapper
-│
-├── decisions/log.ts             # JSONL append-only, atomic rotation at 10 MiB, runId
-├── cli/                         # per-subcommand helpers (doctor, stats, themes, gallery, cta-ab, housekeeping, status, tools-docs, decisions-window)
-└── lib/{process,ffprobe,retry,alerts,slug,color,token-bucket,upload-cache,safe-path}.ts
-
-hyperframes/
-├── templates/
-│   ├── common.mjs               # buildPages, part-ribbon, end-card, SVG ornaments, font resolver
-│   └── editorial.mjs            # the single parametric template driven by a resolved theme
-├── themes/
-│   ├── palettes.json            # 29 palettes, WCAG-AA verified
-│   ├── fonts.json               # 10 pairings, local caching via scripts/fetch-fonts.ts
-│   └── treatments.json          # 12 treatments, keywordHints, moodCandidates, fallback
-└── assets/fonts/                # (gitignored) local font cache; run `pnpm fetch-fonts`
-
-deploy/
-├── docker-compose.yml           # self-hosted Postiz + Postgres + Redis
-├── cron/                        # crontab + launchd + systemd timer examples
-└── README.md
-```
-
-### Why this shape
-
-- **ContentBundle as the neutral contract.** AudioKids is the first consumer, not the core. Any pipeline that emits a `ContentBundle` drives the same tools.
-- **Tools are introspectable by agents.** Each tool publishes `inputSchema`, `outputSchema`, `examples`, and `composes` via `tools list --json`. An external agent discovers and chains them via `run-pipeline`.
-- **Themes resolve deterministically and are reproducible.** The resolver hashes `bundle.id` to pick among candidates, persists the decision with the current `catalogVersion`, and re-resolves when the catalog bumps. Agents override via `choose-theme`.
-- **One publisher per file, uniform base class.** Adding a platform is: new file + one method + one line in `registry.ts`. Keeps each platform's quirks isolated.
-- **Transcription runs once.** Whisper processes the MP3 and caches the JSON. All variants share the same word timestamps.
-- **YouTube is delegated to an external CLI.** Set `YOUTUBECLI_PATH` to any tool that accepts `run youtube_cli video upload --file ... --title ... --description ... --privacy ... [--tags ...]` and prints `videoId: <11 chars>` on stdout (see [`src/platforms/youtube.ts`](./src/platforms/youtube.ts) for the exact contract). If you don't have one, leave the env unset — YouTube will simply not appear as a target.
-- **Spotify is RSS, not API.** No per-episode publishing endpoint for indie podcasters; we host a feed and platforms poll it.
-- **Video templates are plain HTML + GSAP, not React.** This project originally used Remotion. We migrated to HyperFrames because an agent can write new mood templates in HTML+CSS+GSAP directly. Output is ~40% smaller at equivalent quality.
-- **Decision log is JSONL + runId.** Append-only, greppable, rotates at 10 MiB. Every `Orchestrator.publish()` call mints a UUID threaded into every decision it produces.
-
-## Costs
-
-For 1 story/day across all 5 platforms:
-
-| Platform | Cost | Setup |
+| `kind` | Required content | Processing |
 |---|---|---|
-| X | ~$2–$10/mo (pay-per-use, or $8/mo Premium for 4h video limit) | developer.x.com |
-| TikTok | free | developers.tiktok.com (requires production review) |
-| Instagram | free | Meta App + Business/Creator IG account |
-| YouTube | free (quota) | Google Cloud project |
-| Spotify + Apple + Amazon | free | RSS submission only |
+| `text` | `text.body`, `locale` | Caption-only post on X. |
+| `image-post` | Text plus `primaryMedia` pointing to an image | Uses the prepared image, without Whisper. Choose a compatible Postiz target such as X or Instagram. |
+| `video` | Text plus `primaryMedia` pointing to a video | Validates and uses the prepared video, without Whisper. |
+| `audio-story` | Text plus `primaryMedia` pointing to audio | Transcribes, moderates words and renders editorial slide videos. |
 
-**Total: under ~$10/month** of API costs. Everything else is open source.
+Use absolute local paths for `primaryMedia`. Actual account permissions, provider settings and media constraints still apply. Images are not a YouTube upload mode.
 
-## Status
+Product bundles (`text`, `image-post`, `video`) preserve the supplied message and links; only configured brand CTAs and hashtags are added. Overlong product captions are rejected rather than silently shortened. Audio stories have their own story-oriented copy and editorial theme selection.
 
-### Verified end-to-end
+Audio slides require a nonempty transcript with word timestamps. `--skip-transcription` and `--allow-no-captions` do not provide a captionless slide mode; repair transcription or supply a prepared `video` bundle.
 
-- (no row yet)
+## Configure a tenant per product
 
-When the first real publish lands on a public URL (X / TikTok / Instagram / YouTube), it gets recorded here as `<platform> · <date> · <post URL>`. Until then, the rest of "Shipping" below describes implemented capability, not production-validated behaviour. Render to MP4, RSS feed generation, and the full decision log are exercised every day via tests; the upload-to-real-platform leg requires Postiz OAuth completion (see `deploy/README.md`) and has not yet been recorded.
+```sh
+node dist/cli.js init
+node dist/cli.js tenants list --json
+```
 
-### Shipping (829 unit + integration tests)
+The wizard creates `tenants/<product>/config.json`. It also asks for an AudioKids directory; product bundles supplied through `--bundle-file` do not use that source. You can maintain the configuration directly instead:
 
-Implementation status of each capability. "Implemented" means the code path exists and tests cover it; the Verified end-to-end table above is the source of truth for "the feature has produced a real artefact in production".
+```json
+{
+  "postiz": {
+    "apiUrl": "https://social.example.com/api/public/v1",
+    "apiKey": "",
+    "integrationIds": {
+      "x": "ACCOUNT_ID_FOR_THIS_PRODUCT"
+    }
+  },
+  "brand": {
+    "name": "Example Product",
+    "defaultHashtags": ["exampleproduct"],
+    "ctas": {
+      "instagram": [{ "id": "website", "text": "Discover more through the link in our bio." }]
+    }
+  }
+}
+```
 
-- End-to-end publish pipeline with error taxonomy and remediation hints
-- `dispatch` with stuck-slug detection + 1h/4h/16h transient backoff ladder
-- Preflight: duration cap, bitrate (≥64 kbps), cover existence, platform capability
-- Retry with exponential backoff, 24h idempotency guard, webhook alerts
-- Postiz rate-limit (10 req/s), integration cache, SHA256 upload dedup, streaming uploads (`openAsBlob`)
-- Atomic MP4 finalisation with size + duration verification; captured stderr in `data/render-logs/`
-- Caption moderation against a Spanish blocklist (~120 terms with conjugations)
-- Whisper with optional per-word `minConfidence` flagging + optional `trimSilence`
-- Recipient consent (`public`, `first-name-only`, `anonymous`) with Unicode-boundary redaction
-- Theme engine: 12 treatments × 29 WCAG-AA palettes × 10 font pairings; deterministic resolver with persisted decisions + `catalogVersion` freshness
-- Multi-locale hashtags and CTAs (es + en, fallback to es); deterministic CTA rotation per bundle
-- Instagram multi-part split with treatment-styled ribbons, stable CTA across parts
-- Spotify RSS generator
-- Tool registry with examples + composes, introspectable via `tools list/describe/docs`
-- Declarative pipelines with NDJSON streaming (`run-pipeline --stream`)
-- `doctor`, `stats`, `cta-ab` (with engagement ingest), `themes`, `gallery`, `logs`, `cache`, `copy preview` subcommands
-- Decision log JSONL with rotation at 10 MiB + `runId` correlation + `--reset-attempts`
-- Path traversal guard on `--bundle-file`
-- Self-hosted Postiz docker-compose
+Replace the example endpoint/account ID and set the API key privately before uploading. Self-hosted Postiz URLs include `/api/public/v1`; Postiz cloud uses `https://api.postiz.com/public/v1`.
 
-### Roadmap
+```sh
+node dist/cli.js integrations --tenant <product> --json
+node dist/cli.js doctor --tenant <product> --json
+```
 
-- **Avatar narration mode** (planned): same cuento, narrated by an AI avatar with lipsync to the existing audio, for TikTok / IG where presence converts better than text. Architecture, tool landscape (HeyGen / Argil / D-ID for lipsync; Flux / Higgsfield are not lipsync tools), and spike plan in [`docs/presentation-modes.md`](./docs/presentation-modes.md).
+Use the integration IDs returned by Postiz to bind each network under `postiz.integrationIds`. Multiple active accounts on one network cause an ambiguity error when no binding is configured. Review `postiz.platformSettings` for the intended provider settings, especially TikTok privacy and commercial-content declarations.
 
-Intentionally not shipping yet:
-- Additional mood templates: `fantasia` covers all moods via fallback. Authoring the other six is deferred by product decision.
-- Engagement ingestion from YouTubeCLI + Postiz back into the decision log (future feedback loop).
-- Automated clip selection ("post the best 30s of a 5min cuento"). Stories run at narration pace on purpose — this is a book, not a song.
-- Automatic upload of the Spotify RSS feed + MP3s to R2. `rss` builds `feed.xml`; operator handles the upload.
+Each named tenant has isolated decisions, caches and logs under `data/<product>/`, and render work under `tmp/<product>/`. `default` uses `data/` and `tmp/` directly. Missing configuration fields can inherit shared `.env` defaults, so specify the intended accounts and credentials for every production product. Missing or invalid named-tenant configuration fails explicitly.
 
-## How this compares
+## Publish and inspect the result
 
-| Need | Use this |
+After reviewing the content and selecting the account, omit `--dry-run` for a real upload:
+
+```sh
+node dist/cli.js publish --tenant <product> --bundle-file ./tmp/product-update.json --platforms x --reason "approved product update" --json
+node dist/cli.js decisions --tenant <product> --slug product-update-2026-09-06 --pretty
+```
+
+Always choose the target platforms explicitly. A successful Postiz response confirms acceptance by Postiz, not final publication on the social network. Check its queue and the destination account before enabling unattended operation.
+
+Capture stdout and stderr separately. `publish --json` and `render --json` emit one JSON report on stdout; progress goes to stderr. Check the exit status and each `results[]` entry, including `success`, `skipped`, `errorClass` and `remediation`. Exit 0 can include intentional skips. `runId` connects a report to its decisions.
+
+## AudioKids dispatch and scheduling
+
+The only bundled discovery adapter is `audiokids`. It reads:
+
+| Layout | Files |
 |---|---|
-| I have a podcast RSS feed and want auto-posted clips on every episode with 10+ template options | [Headliner](https://www.headliner.app/) |
-| I want to turn long video into viral short-form | [Opus Clip](https://www.opus.pro/), [Submagic](https://submagic.co/) |
-| I want a polished text-edit-driven audiogram maker | [Descript](https://www.descript.com/tools/audiogram-maker) |
-| I have a local MP3-first pipeline and want a cron-driven, self-hosted, multi-platform publisher with an LLM-legible decision log | this repo |
+| v1 | `<outputDir>/<slug>.json` and `<outputDir>/<slug>.mp3` |
+| v2 | `<outputDir>/<slug>/story.json` and `<outputDir>/<slug>/<slug>.mp3` (or a single MP3 in that directory) |
 
-## Origin
+Configure `audiokids.outputDir` for the tenant. Invalid metadata or missing/empty audio is skipped with a stderr warning. Files are preserved for repair.
 
-Extracted from the [AudioKids](https://audiokids.org) toolchain — a Spanish-language AI audio-story publisher that generates a daily cuento and ships it across every relevant social surface — and open-sourced because the reliability scaffolding around multi-platform publishing (retry, idempotency, alerts, caption moderation, whisper-crash hard-stop, decision log) is generic enough to stand alone. AudioKids is the first consumer of this repo; it is not the only one it can serve.
+```sh
+node dist/cli.js dispatch --tenant <product> --adapter audiokids --platforms x,instagram --dry-run --json
+```
 
-## License
+For an authorized unattended workflow, use the same command without `--dry-run`, or configure `daemon`. See [scheduler examples](deploy/cron/README.md). `dispatch` selects the oldest eligible AudioKids candidate and sends only its pending, unblocked platforms. It does not discover arbitrary product-bundle files; use `publish --bundle-file` for those.
 
-[MIT](./LICENSE). Use freely; attribution appreciated. Originally built for [AudioKids](https://audiokids.org) and open-sourced from that codebase.
+The dispatch lookback is **30 days**. Older successes can become eligible again while the source remains in the input directory. Preserve or remove input candidates according to the intended republication policy. No work returns an object containing `dispatched: false` and `reason: "nothing pending"`. Spotify is excluded from per-story dispatch.
 
----
+Long Instagram audio stories are split into parts of at most 170 seconds. Each accepted part is recorded before the next upload, with scheduled dates spaced at least five minutes apart. Retries retain completed parts and resume missing ones.
 
-## For agents
+## YouTube, RSS and inbox
 
-See [`SKILL.md`](./SKILL.md) for workflow heuristics, platform quirks, and things to avoid. It's the contract this repo publishes for LLM agents to consume.
+**YouTube:** configure `youtubecli.path` to a project containing its `youtube_cli` executable and optionally set `youtubecli.channelId` for the product's channel. The adapter runs `video register <file>` to obtain a local UUID, then `video upload <uuid>`. Uploads from this project's publisher are currently **unlisted**. Confirm the channel and uploaded video; do not infer public visibility from a successful result.
+
+**RSS:** configure `AUDIOKIDS_OUTPUT_DIR` and `SPOTIFY_RSS_PUBLIC_URL`, then run:
+
+```sh
+node dist/cli.js rss --output ./tmp/feed.xml
+```
+
+`rss` uses global environment configuration and has no `--tenant` or `--json` option. It writes XML locally. Hosting the feed, audio and covers, and submitting the feed to podcast platforms are separate operations. This command does not upload to R2 or publish an episode through a Spotify API.
+
+**Inbox:** `inbox list` and `inbox reply` currently use mock providers. Their output is synthetic and replies are simulated; they do not manage live social engagement.
+
+## Recovery without duplicate posts
+
+- Manual `publish` skips an already successful `(id, platform)` within 24 hours. Dispatch uses its separate 30-day window. Both consult archived decisions and exclude preview results.
+- Retryable failures receive bounded retries. An ambiguous creation/upload outcome produces `needs-human` with `reconcile-post`; automatic retries stop until the remote outcome is checked.
+- A tenant publication lock prevents overlapping runs. A stopped process, or a remote success whose decision could not be saved, can leave `decisions.jsonl.publish.lock` beside that tenant's log. Inspect its PID/time, confirm the process has stopped and reconcile remote posts before removing a stale lock.
+
+Inspect first:
+
+```sh
+node dist/cli.js decisions --tenant <product> --stuck --json
+node dist/cli.js decisions --tenant <product> --slug <id> --pretty
+```
+
+Only after confirming that an ambiguous post was not created, reset the affected platform:
+
+```sh
+node dist/cli.js decisions --tenant <product> --reset-attempts <id> --platform x
+```
+
+Without `--platform`, reset applies to all platforms recorded for that ID. If a post exists remotely, preserve the block until its verified outcome is recorded. Do not use `--force` as automatic recovery: it bypasses duplicate protection and completed-part reuse. Retain decision archives and completed-part records in backups. See the [recovery procedure and current verification status](docs/production-readiness.md).
+
+## Command catalog
+
+Use `node dist/cli.js <command> --help` for exact options and nested command help where applicable.
+
+| Task | Commands |
+|---|---|
+| Prepare and publish | `copy preview`, `render`, `publish` |
+| AudioKids automation | `dispatch`, `daemon` |
+| Configure and diagnose | `init`, `tenants list`, `integrations`, `status`, `doctor` |
+| History and reports | `decisions`, `decisions archives`, `stats`, `cta-ab` |
+| Local maintenance | `decisions rotate`, `logs`, `logs prune`, `cache prune` |
+| Visual catalog | `themes list`, `themes describe`, `gallery` |
+| Agent tools and schemas | `tools list --json`, `tools describe <name> --json`, `tools docs` |
+| Declarative tools | `run-pipeline <spec.json> --json` or `--stream` |
+| Separate feed/mock flows | `rss`, `inbox list`, `inbox reply` |
+
+JSON formatting is command-specific. History queries emit NDJSON by default and an array with `decisions --pretty`. `decisions --stuck --json` emits an array. `run-pipeline --stream` emits one object per step plus a summary. Health reports and tool descriptions can be multiline JSON; parse the complete stdout document.
+
+## Development
+
+```sh
+pnpm build
+pnpm test
+```
+
+CI runs installation from the frozen lockfile, compilation and tests on Node 22. Tests cover contracts and local behavior; they do not establish that a production account has authorized or completed an upload.
+
+The renderer uses [editorial.mjs](hyperframes/templates/editorial.mjs) and the [theme catalog](hyperframes/themes/). After changing its output, review the template tests and snapshots; animation changes also need a real local render.
+
+[MIT license](LICENSE).
