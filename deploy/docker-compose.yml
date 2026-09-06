@@ -1,24 +1,25 @@
 services:
   postiz:
-    image: ghcr.io/gitroomhq/postiz-app:latest
+    image: ghcr.io/gitroomhq/postiz-app:v2.23.0
     container_name: postiz
     restart: unless-stopped
     environment:
       # ── Core ──
-      MAIN_URL: "http://localhost:5000"
-      FRONTEND_URL: "http://localhost:5000"
-      NEXT_PUBLIC_BACKEND_URL: "http://localhost:5000/api"
-      JWT_SECRET: "${POSTIZ_JWT_SECRET:?POSTIZ_JWT_SECRET must be set in deploy/.env — generate with: openssl rand -hex 32}"
+      MAIN_URL: "${POSTIZ_PUBLIC_URL:-http://localhost:4007}"
+      FRONTEND_URL: "${POSTIZ_PUBLIC_URL:-http://localhost:4007}"
+      NEXT_PUBLIC_BACKEND_URL: "${POSTIZ_PUBLIC_URL:-http://localhost:4007}/api"
+      JWT_SECRET: "${POSTIZ_JWT_SECRET:?POSTIZ_JWT_SECRET must be set in deploy/.env (generate with openssl rand -hex 32)}"
 
       # ── Data ──
       DATABASE_URL: "postgresql://postgres:${POSTIZ_DB_PASSWORD:?POSTIZ_DB_PASSWORD must be set in deploy/.env}@postgres:5432/postiz"
       REDIS_URL: "redis://redis:6379"
       BACKEND_INTERNAL_URL: "http://localhost:3000"
+      TEMPORAL_ADDRESS: "temporal:7233"
+      RUN_CRON: "true"
       IS_GENERAL: "true"
       # Keep registration disabled by default. Flip to "false" only while creating
       # the first admin account, then flip back. Leaving this "false" on a
-      # publicly reachable instance lets anyone on the internet register and
-      # obtain API access to your connected social accounts.
+      # publicly reachable instance allows uninvited users to register.
       DISABLE_REGISTRATION: "${POSTIZ_DISABLE_REGISTRATION:-true}"
       STORAGE_PROVIDER: "local"
       UPLOAD_DIRECTORY: "/uploads"
@@ -44,12 +45,20 @@ services:
       - ./postiz-data/uploads:/uploads
       - ./postiz-data/config:/config
     ports:
-      - "5000:5000"
+      - "127.0.0.1:4007:5000"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      temporal:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "const r=require('http').get('http://localhost:5000/',res=>process.exit(res.statusCode<500?0:1));r.on('error',()=>process.exit(1));r.setTimeout(4000,()=>{r.destroy();process.exit(1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
 
   postgres:
     image: postgres:17-alpine
@@ -78,3 +87,67 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
+  # Required by Postiz >=2.12. Based on the official compose at
+  # gitroomhq/postiz-docker-compose commit dd4969e5e694cd009619a0d53cff14c21104580b.
+  temporal-postgresql:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: "${POSTIZ_DB_PASSWORD:?POSTIZ_DB_PASSWORD must be set in deploy/.env}"
+    volumes:
+      - ./postiz-data/temporal-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  temporal-elasticsearch:
+    image: elasticsearch:7.17.27
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      ES_JAVA_OPTS: "-Xms256m -Xmx256m"
+      xpack.security.enabled: "false"
+      cluster.routing.allocation.disk.threshold_enabled: "true"
+      cluster.routing.allocation.disk.watermark.low: 512mb
+      cluster.routing.allocation.disk.watermark.high: 256mb
+      cluster.routing.allocation.disk.watermark.flood_stage: 128mb
+    volumes:
+      - ./postiz-data/temporal-elasticsearch:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  temporal:
+    image: temporalio/auto-setup:1.28.1
+    restart: unless-stopped
+    environment:
+      DB: postgres12
+      DB_PORT: "5432"
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: "${POSTIZ_DB_PASSWORD:?POSTIZ_DB_PASSWORD must be set in deploy/.env}"
+      POSTGRES_SEEDS: temporal-postgresql
+      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/production-sql.yaml
+      ENABLE_ES: "true"
+      ES_SEEDS: temporal-elasticsearch
+      ES_VERSION: v7
+      TEMPORAL_NAMESPACE: default
+    volumes:
+      - ./dynamicconfig:/etc/temporal/config/dynamicconfig:ro
+    depends_on:
+      temporal-postgresql:
+        condition: service_healthy
+      temporal-elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "temporal", "operator", "cluster", "health", "--address", "temporal:7233"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
