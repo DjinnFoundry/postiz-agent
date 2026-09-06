@@ -24,6 +24,8 @@ jobs:
         with:
           node-version: '22'
           cache: pnpm
+      - name: Install media probe for RSS tests
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm test
