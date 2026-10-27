@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { normalizePublishResult } from '../publication-state.js';
 import { SlideVideoBuilder } from '../media/slide-video.js';
 import type { Platform, PublishResult, StoryAssets, WordEntry } from '../types.js';
 
@@ -32,6 +33,7 @@ export abstract class VideoPublisher implements PlatformPublisher {
 
   async publish(ctx: PublishContext): Promise<PublishResult> {
     const ts = new Date().toISOString();
+    let uploadStarted = false;
     try {
       const { videoPath, warnings } = await this.buildVideo(ctx);
       if (ctx.dryRun) {
@@ -39,23 +41,31 @@ export abstract class VideoPublisher implements PlatformPublisher {
         return {
           platform: this.platform,
           success: true,
+          outcome: 'preview',
+          preview: true,
+          dryRun: true,
           url: `file://${videoPath}`,
           timestamp: ts,
           ...(warnings.length ? { warnings } : {}),
         };
       }
+      uploadStarted = true;
       const result = await this.upload(videoPath, ctx);
-      return {
+      return normalizePublishResult({
         platform: this.platform,
         success: true,
         ...result,
         timestamp: ts,
         ...(warnings.length ? { warnings: [...(result.warnings ?? []), ...warnings] } : {}),
-      };
+      }, false, this.platform);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`  ${this.platform} failed: ${msg}`);
-      return { platform: this.platform, success: false, error: msg, timestamp: ts };
+      return {
+        platform: this.platform, success: false, outcome: uploadStarted ? 'unknown' : 'failed',
+        error: msg, timestamp: ts,
+        ...(ctx.dryRun ? { preview: true, dryRun: true } : {}),
+      };
     }
   }
 

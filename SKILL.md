@@ -39,8 +39,8 @@ postiz-agent dispatch --platforms x,tiktok,instagram,youtube
 ```
 
 `dispatch` is the autonomous entry point. It scans `CONTENT_OUTPUT_DIR`, consults
-the decision log, and picks the oldest item not yet fully published to the target
-platforms in the last 30 days. Exits 0 with `{"dispatched": false, "reason":
+the decision log, and picks the oldest eligible item not yet fully published to the target
+platforms in the last 30 days. Items with accepted, unknown or incomplete publication attempts are held for reconciliation, not sent again automatically. Exits 0 with `{"dispatched": false, "reason":
 "nothing pending"}` when there is nothing to do — safe to run every N hours from
 cron/systemd. Pair with `--json` for clean, parseable output.
 
@@ -76,7 +76,7 @@ Every command accepts `--help` with examples. Commands that emit JSON also accep
 
 - `--slug` is the basename of the source output files (e.g. `launch-recap` for `launch-recap.mp3` + `launch-recap.json`). Never fabricate one.
 - `--platforms` is comma-separated: `x,tiktok,instagram,youtube,spotify`. `spotify` is a valid target but produces no per-story output — it relies on the RSS feed.
-- `--dry-run` (publish only) renders videos but skips uploads. Equivalent to running `render` except the decision log records intent.
+- `--dry-run` renders videos but skips uploads. Like `render`, it logs `render.*` events with `outcome: "preview"`, `preview: true`, `dryRun: true`. A preview never counts as publication and never blocks a later real publish.
 - `--skip-transcription` turns off whisper. Videos will have no captions. Only use if whisper is broken and you want to still get a video out, or if the audio is non-speech.
 - `--allow-no-captions` (publish/render) lets the pipeline continue when whisper CRASHES (as opposed to `--skip-transcription` which is a deliberate opt-out). Without this flag, a whisper crash aborts before render with exit 1 — you do NOT want silent no-caption videos on the feed.
 - `--reason` (publish only) is a free-text string recorded in the decision log. Use this when the action is something other than the default daily schedule — e.g. `--reason "re-publish after fixing mood palette"`.
@@ -94,7 +94,7 @@ Every command accepts `--help` with examples. Commands that emit JSON also accep
 - The Postiz app requires production review on TikTok's side (5-10 days). Do not assume it's set up without running `integrations` first.
 
 ### Instagram
-- Reels cap at 3 minutes. For longer audio, the `InstagramPublisher` splits automatically into N ≤170s windows (aligned to `beats[]` when possible, else on word boundaries). Each part renders its own MP4 with a `PARTE i/N` ribbon in the intro card and is scheduled 5 minutes apart via Postiz `scheduledDate` so they land in order. The `PublishResult` for a multi-part publish has `parts[]` populated; each part gets its own decision log entry (`publish.instagram.part1`, `publish.instagram.part2`, ...).
+- Reels cap at 3 minutes. For longer audio, the `InstagramPublisher` splits automatically into N ≤170s windows (aligned to `beats[]` when possible, else on word boundaries). Each part renders its own MP4 with a `PARTE i/N` ribbon in the intro card and requests a Postiz `scheduledDate` staggered 5 minutes apart. This is submission intent, not evidence of delivery or scheduling fulfillment. `parts[]` retains every result and ID; the log records each part plus a whole-operation summary. Preview events use `render.instagram[.partN]`; real attempts use `publish.instagram[.partN]`. One accepted part is not a completed publication.
 - Requires a Business or Creator account linked to a Facebook Page.
 
 ### YouTube
@@ -129,10 +129,10 @@ To add a new mood:
 These are wired into `publish` and `dispatch` by default. You only need to think about them when the defaults don't match the user's intent.
 
 ### Retry with exponential backoff
-Every platform publish is wrapped in `retry()` (3 attempts, ~2s base, jittered). HTTP 5xx and network errors (`ECONNRESET`, `ETIMEDOUT`, `EAI_AGAIN`) are retryable; 4xx (auth/validation) is not. A transient 500 from Postiz does not lose the post.
+Every platform publish uses `retry()` (3 attempts, ~2s base, jittered), but only known pre-upload failures are eligible for transient-error retries. An upload exception is ambiguous, not proof of rejection. Never automatically retry an accepted post, an unknown result or an incomplete multipart submission: reconcile first. HTTP 4xx is not retryable. Available remote IDs remain in the report/log.
 
 ### 24-hour idempotency guard
-Before each real publish (not `--dry-run`), the orchestrator queries the decision log for a successful entry on the same `(slug, platform)` in the last 24 hours. If one exists, that platform is **skipped** with `{success: true, skipped: true, reason: "already published today"}`. To override, pass `--force`.
+Before a real publish, the orchestrator checks for a confirmed whole-operation publication on the same `(slug, platform)` in the last 24 hours, or an unresolved accepted/unknown/incomplete attempt of any age. It returns `outcome: "skipped"`, `skipped: true`, with reason `already published today` or `publication requires reconciliation`; held IDs/parts are retained. Skips do not extend the guard. A later confirmed whole-operation event clears a hold. There is no reconciliation command or delivery polling yet: inspect remote state before using an explicitly authorized `publish --force`, which can duplicate posts. `dispatch` also excludes held items; `nothing pending` is not delivery confirmation.
 
 ### Webhook alerts
 If `ALERT_WEBHOOK_URL` is set in `.env`, the agent fires a 5-second-timeout POST with `{slug, platform, error, attempts, timestamp}` after a publish exhausts its retries. The webhook call is fire-and-forget; webhook failures never block the publish.
@@ -152,7 +152,15 @@ Content items declare a mood. Only `fantasia` currently ships a template; all ot
 postiz-agent decisions --slug dragon-marcos
 ```
 
-Every line is a JSON object with `{id, action, contentSlug, platform, reason, result, createdAt}`. `result.success: false` means that platform failed; `result.error` is the raw error string. This log is the agent's memory across runs — "did yesterday's TikTok succeed?" is one grep, not a platform API re-check.
+Every line is a JSON object with `{id, action, contentSlug, platform, reason, result, createdAt}`. Inspect `result.outcome`, not just `success`:
+
+- `preview`: local-only work, with preview/dry-run flags. No publication memory is consumed.
+- `accepted`: remote ID/URL received, but no delivery confirmation. Current Postiz and YouTube upload results mean acceptance, not public visibility.
+- `published`: explicit adapter delivery confirmation plus a remote reference. For multipart operations every distinct part 1..N must be present, consistent and confirmed; individual part events never prove whole-operation publication.
+- `incomplete` / `unknown`: partial or ambiguous work, `success: false`. Retain IDs/parts and reconcile instead of resending.
+- `failed` / `skipped`: known failure or no attempt; the RSS-only no-op is skipped.
+
+Legacy `file://` URLs, preview/dry-run flags and preview outcomes never count as published, even if an old action says `publish.*`. Bare legacy successes are unknown; IDs without confirmation are accepted. Render events, platform mismatches and skipped events are not publication evidence. The append-only JSONL guard is not an exactly-once guarantee for concurrent processes or a crash before logging. See the README state table for the full contract.
 
 When a publish fails, always record a follow-up decision explaining what you did:
 

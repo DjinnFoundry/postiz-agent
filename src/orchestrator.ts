@@ -8,7 +8,8 @@ import type { PlatformPublisher, PublishContext } from './platforms/base.js';
 import { DecisionLog } from './decisions/log.js';
 import { retry, isTransientError } from './lib/retry.js';
 import { notifyFailure } from './lib/alerts.js';
-import { wasRecentlyPublished } from './idempotency.js';
+import { findPublicationHold, wasRecentlyPublished } from './idempotency.js';
+import { normalizePublishResult, publicationOutcome } from './publication-state.js';
 import { moderateWords } from './media/caption-moderation.js';
 import type { CaptionStatus, Platform, PublishResult, WordEntry } from './types.js';
 
@@ -108,17 +109,21 @@ export class Orchestrator {
   ): Promise<PublishResult> {
     console.log(`→ ${platform}: starting`);
 
-    // Idempotency: skip if we already successfully published in the last 24h.
+    // Confirmed publications have a 24h guard; unresolved remote attempts do not expire.
     if (!opts.force && !opts.dryRun) {
       const history = this.decisions.list({ contentSlug: opts.contentSlug, platform });
       const check = wasRecentlyPublished(history, opts.contentSlug, platform);
-      if (check.recent) {
-        console.log(`  ${platform} skipped: already published in the last 24h (${check.entry?.createdAt})`);
+      const hold = findPublicationHold(history, opts.contentSlug, platform);
+      if (check.recent || hold) {
+        const reason = hold ? 'publication requires reconciliation' : 'already published today';
+        console.log(`  ${platform} skipped: ${reason}`);
         const skipped: PublishResult = {
           platform,
           success: true,
+          outcome: 'skipped',
           skipped: true,
-          reason: 'already published today',
+          reason,
+          ...(hold ? { postId: hold.result.postId, url: hold.result.url, parts: hold.result.parts } : {}),
           timestamp: new Date().toISOString(),
           captionStatus,
           warnings: baseWarnings.length ? [...baseWarnings] : undefined,
@@ -136,6 +141,7 @@ export class Orchestrator {
 
     const publisher = getPublisher(platform);
     const result = await this.publishWithRetry(publisher, ctx);
+    const action = `${opts.dryRun ? 'render' : 'publish'}.${platform}`;
     const decorated: PublishResult = {
       ...result,
       captionStatus: result.captionStatus ?? captionStatus,
@@ -146,32 +152,30 @@ export class Orchestrator {
       // Multi-part (IG Reels split): log one decision entry per part.
       for (const part of decorated.parts) {
         await this.decisions.record({
-          action: `publish.${platform}.part${part.partIndex ?? 0}`,
+          action: `${action}.part${part.partIndex ?? 0}`,
           contentSlug: opts.contentSlug,
           platform,
           reason: opts.reason ?? 'scheduled daily publication',
           result: part,
         });
       }
-    } else {
-      await this.decisions.record({
-        action: `publish.${platform}`,
-        contentSlug: opts.contentSlug,
-        platform,
-        reason: opts.reason ?? 'scheduled daily publication',
-        result: decorated,
-      });
     }
+    // The summary is authoritative for whole-operation completion; a part is not a whole post.
+    await this.decisions.record({
+      action,
+      contentSlug: opts.contentSlug,
+      platform,
+      reason: opts.reason ?? 'scheduled daily publication',
+      result: decorated,
+    });
 
     return decorated;
   }
 
   /**
-   * Calls `publisher.publish(ctx)` through the retry helper. Publishers catch their
-   * errors internally and return `{success:false, error}`; we re-throw those into the
-   * retry harness so transient failures (5xx, network errors) get retried. On final
-   * failure we return the last failed PublishResult verbatim so the caller still sees
-   * the original error string.
+   * Retry only known failures without remote acceptance. Unknown upload outcomes
+   * and incomplete multipart work must be reconciled, never automatically resent.
+   * Preserve the last attempt's result and IDs, not a prior attempt's failure.
    */
   private async publishWithRetry(publisher: PlatformPublisher, ctx: PublishContext): Promise<PublishResult> {
     let lastResult: PublishResult | null = null;
@@ -179,7 +183,8 @@ export class Orchestrator {
     try {
       return await retry(async () => {
         attemptsSeen++;
-        const result = await publisher.publish(ctx);
+        lastResult = null;
+        const result = normalizePublishResult(await publisher.publish(ctx), ctx.dryRun, publisher.platform);
         lastResult = result;
         if (!result.success) {
           const err = new Error(result.error ?? 'publish failed');
@@ -188,7 +193,8 @@ export class Orchestrator {
         }
         return result;
       }, {
-        isRetryable: (err) => isTransientError(err as { message?: string; code?: string }),
+        isRetryable: (err) => Boolean(lastResult && publicationOutcome(lastResult) === 'failed')
+          && isTransientError(err as { message?: string; code?: string }),
         onRetry: (err, attempt, delayMs) => {
           const msg = err instanceof Error ? err.message : String(err);
           console.warn(`  ${publisher.platform} attempt ${attempt} failed (${msg}); retrying in ${delayMs}ms`);
@@ -202,12 +208,13 @@ export class Orchestrator {
         config.alerts?.webhookUrl || undefined,
       );
       if (lastResult) return lastResult;
-      return {
+      return normalizePublishResult({
         platform: publisher.platform,
         success: false,
+        outcome: ctx.dryRun ? 'failed' : 'unknown',
         error: msg,
         timestamp: new Date().toISOString(),
-      };
+      }, ctx.dryRun);
     }
   }
 

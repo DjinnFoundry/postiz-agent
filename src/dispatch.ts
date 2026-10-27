@@ -1,6 +1,8 @@
 import { readdirSync, statSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DecisionLogEntry, Platform } from './types.js';
+import { isPublishedDecision } from './publication-state.js';
+import { findPublicationHold } from './idempotency.js';
 
 export interface DispatchCandidate {
   /** Content slug (basename of the source files, without extension). */
@@ -12,10 +14,9 @@ export interface DispatchCandidate {
 const PUBLISHED_WINDOW_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 /**
- * Select the oldest candidate that is NOT yet fully published (successful publish
- * within the last 30 days) to ALL requested platforms. Returns null when every
- * candidate already has a successful publish on every requested platform. Pure
- * function so we can unit-test it with fixture log + candidates.
+ * Select the oldest eligible candidate not fully confirmed on ALL requested
+ * platforms within 30 days. Unresolved remote attempts hold the entire item;
+ * null can mean held work, not that every item has been publicly delivered.
  */
 export function selectNextContent(
   candidates: DispatchCandidate[],
@@ -28,7 +29,7 @@ export function selectNextContent(
   const cutoffMs = now.getTime() - PUBLISHED_WINDOW_MS;
   const successByContent = new Map<string, Set<Platform>>();
   for (const e of log) {
-    if (!e.result?.success) continue;
+    if (!isPublishedDecision(e)) continue;
     const createdMs = Date.parse(e.createdAt);
     if (!Number.isFinite(createdMs) || createdMs < cutoffMs) continue;
     const contentSlug = e.contentSlug ?? e.storySlug;
@@ -40,6 +41,7 @@ export function selectNextContent(
 
   const sorted = [...candidates].sort((a, b) => a.generatedAtMs - b.generatedAtMs);
   for (const c of sorted) {
+    if (platforms.some(p => findPublicationHold(log, c.slug, p))) continue;
     const published = successByContent.get(c.slug) ?? new Set<Platform>();
     const pending = platforms.some(p => !published.has(p));
     if (pending) return c.slug;

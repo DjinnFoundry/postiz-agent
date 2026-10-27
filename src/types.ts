@@ -96,14 +96,21 @@ export interface StoryAssets {
 
 export type CaptionStatus = 'ok' | 'skipped' | 'failed';
 
+export type PublicationOutcome = 'preview' | 'accepted' | 'published' | 'incomplete' | 'skipped' | 'failed' | 'unknown';
+
 export interface PublishResult {
   platform: Platform;
+  /** Whether the requested operation completed; a preview is NOT a publication. */
   success: boolean;
+  /** Missing on legacy entries; consumers must classify those conservatively. */
+  outcome?: PublicationOutcome;
+  preview?: boolean;
+  dryRun?: boolean;
   postId?: string;
   url?: string;
   error?: string;
   timestamp: string;
-  /** If true, the platform was skipped (already published, or --dry-run short-circuit). */
+  /** If true, no publication was attempted (e.g. an idempotency skip). */
   skipped?: boolean;
   /** Short machine-readable reason (e.g. "already published today"). */
   reason?: string;
@@ -115,8 +122,8 @@ export interface PublishResult {
   captionStatus?: CaptionStatus;
   /** Non-fatal warnings surfaced during this publish (mood fallback, moderation, etc.). */
   warnings?: string[];
-  /** For multi-part publishes (e.g. IG Reels split): one sub-result per part. The
-   *  top-level success is true iff every part succeeded. */
+  /** One sub-result per part. Completion requires every distinct part 1..N;
+   * accepted parts do not prove delivery. Partial/ambiguous work is incomplete. */
   parts?: PublishResult[];
 }
 

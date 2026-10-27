@@ -6,6 +6,7 @@ import { probeDurationSec } from '../lib/ffprobe.js';
 import { splitIntoParts, type PartSpec } from './instagram-split.js';
 import type { Platform, PublishResult, StoryAssets } from '../types.js';
 import { brandFor, hashtagsFor } from './copy.js';
+import { normalizePublishResult } from '../publication-state.js';
 
 /** Instagram Reels maximum video length (seconds). */
 const IG_REELS_MAX_SEC = 180;
@@ -48,18 +49,19 @@ export class InstagramPublisher extends PostizVideoPublisher {
 
     const every = partResults.every(p => p.success);
     const errors = partResults.filter(p => !p.success).map(p => p.error).filter(Boolean);
-    return {
+    return normalizePublishResult({
       platform: this.platform,
       success: every,
       timestamp: ts,
       parts: partResults,
       ...(every ? {} : { error: errors.join(' | ') || 'one or more parts failed' }),
-    };
+    }, ctx.dryRun);
   }
 
   private async publishPart(ctx: PublishContext, part: PartSpec, startTs: number): Promise<PublishResult> {
     const ts = new Date().toISOString();
     const videoPath = join(ctx.workDir, `${ctx.assets.slug}-${this.platform}-part${part.partIndex}.mp4`);
+    let uploadStarted = false;
     try {
       const build = await this.slides.build({
         platform: this.platform,
@@ -76,6 +78,7 @@ export class InstagramPublisher extends PostizVideoPublisher {
         return {
           platform: this.platform,
           success: true,
+          outcome: 'preview', preview: true, dryRun: true,
           url: `file://${build.outputPath}`,
           timestamp: ts,
           partIndex: part.partIndex,
@@ -83,6 +86,7 @@ export class InstagramPublisher extends PostizVideoPublisher {
           ...warnings,
         };
       }
+      uploadStarted = true;
       const integration = await this.postiz.findIntegration(this.platform);
       const scheduledDate = new Date(startTs + (part.partIndex - 1) * PART_STAGGER_MINUTES * 60_000).toISOString();
       const posted = await this.postiz.createPost({
@@ -92,7 +96,7 @@ export class InstagramPublisher extends PostizVideoPublisher {
         videoPath: build.outputPath,
         scheduledDate,
       });
-      return {
+      return normalizePublishResult({
         platform: this.platform,
         success: true,
         postId: posted.postId,
@@ -101,13 +105,14 @@ export class InstagramPublisher extends PostizVideoPublisher {
         partIndex: part.partIndex,
         partTotal: part.partTotal,
         ...warnings,
-      };
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`  instagram part ${part.partIndex}/${part.partTotal} failed: ${msg}`);
       return {
         platform: this.platform,
         success: false,
+        outcome: uploadStarted ? 'unknown' : 'failed',
         error: msg,
         timestamp: ts,
         partIndex: part.partIndex,

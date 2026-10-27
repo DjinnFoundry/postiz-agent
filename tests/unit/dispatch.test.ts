@@ -5,16 +5,19 @@ import type { DecisionLogEntry, Platform } from '../../src/types.js';
 const NOW = new Date('2026-04-16T12:00:00Z');
 
 function mkLog(over: Partial<DecisionLogEntry>): DecisionLogEntry {
+  const platform = over.platform ?? 'tiktok';
   return {
     id: Math.random().toString(36).slice(2),
-    action: 'publish.tiktok',
+    action: `publish.${platform}`,
     contentSlug: 'dragon',
-    platform: 'tiktok',
+    platform,
     reason: 'test',
     createdAt: new Date(NOW.getTime() - 60_000).toISOString(),
     result: {
-      platform: 'tiktok',
+      platform,
       success: true,
+      outcome: 'published',
+      postId: 'confirmed-test-post',
       timestamp: new Date().toISOString(),
     },
     ...over,
