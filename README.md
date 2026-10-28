@@ -2,6 +2,10 @@
 
 > Cron-driven autonomous publisher for any local MP3-first pipeline. Consumes a directory of `slug.mp3 + slug.json + slug-cover.png`, renders per-platform slide videos with word-level karaoke captions, and publishes to X, TikTok, Instagram, YouTube, and Spotify (RSS) via [Postiz](https://github.com/gitroomhq/postiz-app) self-hosted.
 
+Already have finished media? The separate [`postiz-media publish-approved`](#approved-finished-media)
+entry accepts an approved MP4 or ordered image collection for Instagram/TikTok,
+without transcription or rendering.
+
 Extracted from a daily audio publishing pipeline and generalized into a reusable MP3-first publishing layer: whisper-crash-hard-stop, 24h per-platform idempotency, retry with backoff, webhook alerts after exhaustion, caption moderation, and a JSONL decision log designed for an LLM to grep across runs.
 
 **Agents: read [`SKILL.md`](./SKILL.md) first.** It explains when to use each command, what the flags mean, and what NOT to do.
@@ -127,6 +131,7 @@ Full reference is in the CLI itself (`postiz-agent <cmd> --help`). Short version
 | `publish --slug <s> --platforms <list>` | Render + upload to each platform |
 | `rss --output <path>` | Rebuild the Spotify/Apple RSS feed |
 | `decisions [--slug s] [--platform p]` | Query the JSONL publish history |
+| `publish-approved` | Submit an approved finished MP4/image bundle with exact account, settings and durable receipts; also available through `postiz-media` |
 
 Every command supports `--help`. `dispatch`, `publish`, `render`, `status`, `integrations`, and `decisions` support `--json` for agent-readable output.
 
@@ -173,7 +178,82 @@ Previews log `render.<platform>[.partN]`; real attempts log `publish.<platform>[
 
 Legacy logs are read conservatively without rewriting them: `file://` URLs, preview/dry-run flags and preview outcomes are never publications, even under an old `publish.*` action. Bare legacy successes become unknown; remote references without confirmation become accepted. Publication events must match both the entry and result platform. Skipped events cannot renew the guard.
 
-There is no delivery polling or reconciliation command yet. A later confirmed whole-operation event clears a prior hold; otherwise inspect the remote system before an explicit `publish --force`. The JSONL guard is not an exactly-once guarantee across concurrent processes or crashes before logging. This change does not alter the Postiz API contract or rendering/composition.
+The legacy MP3 pipeline has no delivery polling or reconciliation command. A later confirmed whole-operation event clears a prior hold; otherwise inspect the remote system before an explicit `publish --force`. Its JSONL guard is not an exactly-once guarantee across concurrent processes or crashes before logging. The separate approved-media path below has its own durable receipts and GET reconciliation.
+
+## Approved finished media
+
+Build with `npm run build`, then use `node dist/approved-media-cli.js` (installed
+bin: `postiz-media`). This standalone entry can validate locally without loading
+operator configuration. It does not depend on ffmpeg, Whisper or the MP3 pipeline.
+
+A portable manifest has `schemaVersion: 1`, a nonempty `storyId`, a SHA-256
+`revision`, `kind: "video" | "image_collection"`, ordered `media`, `metadata` and
+`approval`. Each media entry has a relative `path`, `sha256`, `mimeType` and `role`
+(`video`, `cover`, `page`, `question`); pages can carry consecutive `pageNumber`.
+Metadata contains `title`, `description` (the exact caption), `language`, `tags`
+and optional boolean `madeForKids`. The caption is sent unchanged; title/tags are
+not silently appended. Image types are PNG/JPEG; video is MP4. Bytes, MIME/header,
+ordering and unique, safe paths/inodes are validated before effects.
+
+Approval must be `{status:"approved", bundleSha256: HASH, approvedAt: ISO_WITH_ZONE}`.
+HASH is SHA-256 of UTF-8 compact JSON for all manifest fields except `approval`,
+with object keys sorted recursively. Approval binds media order, paths, hashes and
+copy. The producing system records the human decision; this CLI never approves a
+bundle itself. Pending, modified or duplicate-key manifests fail closed.
+
+Example explicit Instagram feed/Reels settings file:
+
+```json
+{"__type":"instagram","post_type":"post"}
+```
+
+```sh
+node dist/approved-media-cli.js publish-approved \
+  --manifest /private/bundle/manifest.json \
+  --integration-id EXACT_ACCOUNT_ID --provider instagram \
+  --mode draft --settings-file /private/instagram-settings.json \
+  --state-dir /private/publication-receipts
+```
+
+Omitting `--allow-publish` returns `ready_for_authorization` after local validation,
+without configuration, network calls or state writes. Once authorized, add that
+flag to upload the approved bytes and create the requested post. It is required
+even for a remote draft. Credentials stay in the owner's environment/configuration
+(`POSTIZ_API_URL`, `POSTIZ_API_KEY`). Never put them in the bundle or command line.
+
+`--mode now|schedule|draft` is mandatory. Schedule requires `--date` with a timezone;
+no other mode accepts a date. Select `instagram-standalone` separately when that
+is the account's provider. TikTok requires explicit privacy, duet/stitch/comment,
+brand toggles, music choice and `content_posting_method`; see the
+[provider settings](https://docs.postiz.com/public-api/providers/tiktok).
+`DIRECT_POST` and `UPLOAD` are distinct: `UPLOAD` leaves publication to the user
+in TikTok and returns `awaiting_manual_publish`, never confirmed profile delivery.
+Instagram `audio` and trial-Reel settings are video-only; audio also requires the
+`instagram` provider. See [Instagram settings](https://docs.postiz.com/public-api/providers/instagram).
+
+Media uploads use `adjust=false` and explicit MIME. The client sends the documented
+`type`, `settings.__type` and media references, and preserves the returned
+`postId`/integration. Its local inventory limit is 35 media, 512 MiB each; actual
+provider limits and dimensions must also be satisfied. It never splits or truncates
+a story to fit. The documented API contract is covered offline; a deployment/account
+pilot is still required before claiming live compatibility.
+
+Receipt identity binds endpoint, story/revision/media, provider and integration.
+Changing copy, settings, schedule or approval for that same identity conflicts
+before another effect. Confirmed media IDs survive retries. Checkpoints precede
+uploads and post creation; uncertain outcomes are held without resending. Keep the
+same private `--state-dir` across restarts. Locks reject concurrent attempts; after
+a crash, confirm the owning process has stopped and inspect its receipt before
+manually removing only that attempt's abandoned `.lock` directory.
+
+Repeat the same command with `--reconcile` to GET an existing recorded post; it
+does not upload or create. Unknown post IDs require operator inspection. A
+publication needs matching post/account/provider readback, `PUBLISHED`, and a valid
+provider release URL. The states `accepted`, `scheduled`, `draft`,
+`awaiting_manual_publish`, `needs_reconciliation`, `failed` and `published` remain
+distinct. Polling is bounded (`--poll-attempts 1..10`, interval at most 30000 ms).
+JSON output always includes `publicationVerified`; exit 2 signals reconciliation,
+exit 1 signals blocked/failed. Exit 0 alone does not mean public delivery.
 
 ## Architecture
 

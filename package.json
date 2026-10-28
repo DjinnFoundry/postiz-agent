@@ -5,7 +5,8 @@
   "type": "module",
   "private": true,
   "bin": {
-    "postiz-agent": "./dist/cli.js"
+    "postiz-agent": "./dist/cli.js",
+    "postiz-media": "./dist/approved-media-cli.js"
   },
   "scripts": {
     "build": "tsc",

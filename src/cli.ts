@@ -11,6 +11,7 @@ import { run } from './lib/process.js';
 import { validateSlug } from './lib/slug.js';
 import { listCandidates, selectNextContent } from './dispatch.js';
 import { PlatformSchema, type Platform } from './types.js';
+import { registerApprovedMediaCommand } from './approved-media-command.js';
 
 const program = new Command();
 
@@ -400,6 +401,8 @@ async function binCheck(cmd: string, testArg: string, required: boolean): Promis
     };
   }
 }
+
+registerApprovedMediaCommand(program);
 
 program.parseAsync(process.argv).catch(err => {
   console.error(err instanceof Error ? err.message : err);
