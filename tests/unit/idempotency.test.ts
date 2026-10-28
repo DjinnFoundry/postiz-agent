@@ -3,16 +3,19 @@ import { wasRecentlyPublished } from '../../src/idempotency.js';
 import type { DecisionLogEntry } from '../../src/types.js';
 
 function mkEntry(over: Partial<DecisionLogEntry>): DecisionLogEntry {
+  const platform = over.platform ?? 'tiktok';
   return {
     id: 'id',
-    action: 'publish.tiktok',
+    action: `publish.${platform}`,
     contentSlug: 'dragon-marcos',
-    platform: 'tiktok',
+    platform,
     reason: 'test',
     createdAt: new Date().toISOString(),
     result: {
-      platform: 'tiktok',
+      platform,
       success: true,
+      outcome: 'published',
+      postId: 'confirmed-test-post',
       timestamp: new Date().toISOString(),
     },
     ...over,

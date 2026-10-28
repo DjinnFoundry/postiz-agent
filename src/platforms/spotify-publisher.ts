@@ -15,6 +15,9 @@ export class SpotifyPublisher implements PlatformPublisher {
     return {
       platform: this.platform,
       success: true,
+      outcome: 'skipped',
+      skipped: true,
+      reason: 'rss-only',
       postId: 'rss-only',
       url: 'rss://feed',
       timestamp: new Date().toISOString(),
